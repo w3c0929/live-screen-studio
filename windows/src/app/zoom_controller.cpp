@@ -40,10 +40,11 @@ lz::Rect ZoomController::shownViewport() const {
 }
 
 lz::Point ZoomController::contentPoint(int x, int y) const {
-    const lz::Rect viewport = shownViewport();
-    const double zoom = camera_ ? camera_->zoom() : 1.0;
-    return {viewport.x + (static_cast<double>(x) - monitorRect_.left) / zoom,
-            viewport.y + (static_cast<double>(y) - monitorRect_.top) / zoom};
+    // Display-local physical coordinates. The overlay maps these with the same viewport
+    // transform the magnifier uses, so ink lands under the magnified cursor even after the
+    // camera has followed the pointer into its safe-zone margin.
+    return {static_cast<lz::Real>(x) - monitorRect_.left,
+            static_cast<lz::Real>(y) - monitorRect_.top};
 }
 
 void ZoomController::startZoom() {
@@ -182,9 +183,14 @@ void ZoomController::tick() {
 
 void ZoomController::handleClick(int x, int y) {
     if (!active_ || !overlay_) return;
-    overlay_->addClick({static_cast<lz::Real>(x - monitorRect_.left),
-                         static_cast<lz::Real>(y - monitorRect_.top)},
-                        nowSeconds());
+    // The physical click is delivered to the app at the real pointer position; the visible
+    // feedback belongs at the magnified cursor, i.e. the same source point mapped by the
+    // current viewport transform.
+    const lz::Point content = contentPoint(x, y);
+    const lz::Rect viewport = shownViewport();
+    const double zoom = camera_ ? camera_->zoom() : 1.0;
+    overlay_->addClick({(content.x - viewport.x) * zoom, (content.y - viewport.y) * zoom},
+                       nowSeconds());
 }
 
 void ZoomController::beginStroke(int x, int y) {

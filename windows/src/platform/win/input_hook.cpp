@@ -7,6 +7,26 @@
 namespace {
 constexpr ULONG_PTR kSyntheticMarker = 0x4C5A0001;
 constexpr int kDragThreshold = 4;
+
+BOOL CALLBACK collectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM param) {
+    MONITORINFO info{};
+    info.cbSize = sizeof(info);
+    if (GetMonitorInfoW(monitor, &info)) {
+        auto* rect = reinterpret_cast<RECT*>(param);
+        if (IsRectEmpty(rect)) {
+            *rect = info.rcMonitor;
+        } else {
+            UnionRect(rect, rect, &info.rcMonitor);
+        }
+    }
+    return TRUE;
+}
+
+RECT physicalVirtualScreen() {
+    RECT rect{};
+    EnumDisplayMonitors(nullptr, nullptr, collectMonitor, reinterpret_cast<LPARAM>(&rect));
+    return rect;
+}
 }  // namespace
 
 InputHook* InputHook::current_ = nullptr;
@@ -132,13 +152,14 @@ void InputHook::postPoint(UINT message, POINT point) {
 }
 
 void InputHook::replayClick(POINT point) {
-    const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    const int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    const int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    const int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    // GetSystemMetrics is DPI-virtualized; monitor rects from GetMonitorInfo are physical,
+    // which is the space SendInput absolute coordinates use with MOUSEEVENTF_VIRTUALDESK.
+    const RECT screen = physicalVirtualScreen();
+    const int vw = screen.right - screen.left;
+    const int vh = screen.bottom - screen.top;
     if (vw <= 1 || vh <= 1) return;
-    const LONG dx = (point.x - vx) * 65535 / (vw - 1);
-    const LONG dy = (point.y - vy) * 65535 / (vh - 1);
+    const LONG dx = (point.x - screen.left) * 65535 / (vw - 1);
+    const LONG dy = (point.y - screen.top) * 65535 / (vh - 1);
 
     INPUT inputs[2]{};
     for (INPUT& input : inputs) {
@@ -198,11 +219,14 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                             self->leftState_ = LeftState::Passthrough;
                         } else {
                             self->leftState_ = LeftState::Drawing;
-                            self->downPoint_ = mouse->pt;
+                            // GetCursorPos is the authoritative physical position; the hook
+                            // point can be DPI-virtualized in some driver setups.
+                            POINT down = mouse->pt;
+                            GetCursorPos(&down);
+                            self->downPoint_ = down;
                             self->moveCount_ = 0;
-                            std::printf("[hook] down (%ld,%ld)\n", mouse->pt.x,
-                                        mouse->pt.y);
-                            self->postStroke(kLiveZoomStrokeBegin, self->downPoint_, shift);
+                            std::printf("[hook] down (%ld,%ld)\n", down.x, down.y);
+                            self->postStroke(kLiveZoomStrokeBegin, down, shift);
                             return 1;
                         }
                     } else {
@@ -212,16 +236,17 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                 case WM_MOUSEMOVE:
                     if (self->leftState_ == LeftState::Drawing) {
                         ++self->moveCount_;
-                        self->postStroke(kLiveZoomStrokeMove, mouse->pt, shift);
-                        // Let the cursor move. Swallowing move events freezes the system pointer,
-                        // and then every later sample is the same point; passing them through
-                        // keeps the pen and the magnified cursor together.
+                        // Points are sampled from GetCursorPos in the UI thread every frame.
+                        // Let the cursor move; swallowing moves freezes the pointer and makes
+                        // every later sample identical.
                     }
                     break;
                 case WM_LBUTTONUP:
                     if (self->leftState_ == LeftState::Drawing) {
-                        const int dx = mouse->pt.x - self->downPoint_.x;
-                        const int dy = mouse->pt.y - self->downPoint_.y;
+                        POINT up = mouse->pt;
+                        GetCursorPos(&up);
+                        const int dx = up.x - self->downPoint_.x;
+                        const int dy = up.y - self->downPoint_.y;
                         self->leftState_ = LeftState::Idle;
                         std::printf("[hook] up dist=%d moves=%d\n",
                                     static_cast<int>(std::lround(std::hypot(dx, dy))),
@@ -232,7 +257,7 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                             self->replayClick(self->downPoint_);
                             self->postPoint(kLiveZoomClick, self->downPoint_);
                         } else {
-                            self->postStroke(kLiveZoomStrokeMove, mouse->pt, shift);
+                            self->postStroke(kLiveZoomStrokeMove, up, shift);
                             PostMessageW(self->target_, kLiveZoomStrokeEnd, 0, 0);
                         }
                         return 1;
