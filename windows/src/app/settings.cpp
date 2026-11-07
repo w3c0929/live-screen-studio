@@ -103,15 +103,15 @@ FollowPreset Settings::followPreset() const {
     // Keep each preset's pan speed, but move the trigger closer to the edge.
     switch (follow) {
         case FollowStyle::Calm:
-            preset.margin = 0.08;
+            preset.margin = 0.06;
             preset.settleMargin = 0.14;
             break;
         case FollowStyle::Standard:
-            preset.margin = 0.06;
+            preset.margin = 0.04;
             preset.settleMargin = 0.11;
             break;
         case FollowStyle::Snappy:
-            preset.margin = 0.04;
+            preset.margin = 0.02;
             preset.settleMargin = 0.08;
             break;
     }
