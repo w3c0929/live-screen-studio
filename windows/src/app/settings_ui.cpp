@@ -120,8 +120,9 @@ void createControls(HWND dialog) {
               L"中键：放大/缩回    按住中键滚动：调倍\n"
               L"放大后左键拖动：画线    Shift：直线\n"
               L"Ctrl+左键拖动：正常拖拽    右键：撤销\n"
-              L"Esc：清除笔迹",
-              24, 210, 400, 80);
+              L"Esc：清除笔迹\n"
+              L"跟随速度越灵敏，画布越晚开始移动",
+              24, 208, 400, 84);
 
     addButton(dialog, kIdOk, L"确定", 250, 292, 86, 30);
     addButton(dialog, kIdCancel, L"取消", 346, 292, 86, 30);

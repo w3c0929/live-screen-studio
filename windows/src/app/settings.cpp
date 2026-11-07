@@ -91,12 +91,31 @@ bool Settings::save() const {
 }
 
 FollowPreset Settings::followPreset() const {
+    FollowPreset preset = FollowPreset::calm;
     switch (follow) {
-        case FollowStyle::Calm: return FollowPreset::calm;
-        case FollowStyle::Standard: return FollowPreset::standard;
-        case FollowStyle::Snappy: return FollowPreset::snappy;
+        case FollowStyle::Calm: preset = FollowPreset::calm; break;
+        case FollowStyle::Standard: preset = FollowPreset::standard; break;
+        case FollowStyle::Snappy: preset = FollowPreset::snappy; break;
     }
-    return FollowPreset::calm;
+    // Windows feels better when the camera waits until the magnified cursor is close to the
+    // screen edge. The macOS presets use a much wider safe zone (25% of the screen), which
+    // made the canvas start moving while the pointer still looked far from the edge.
+    // Keep each preset's pan speed, but move the trigger closer to the edge.
+    switch (follow) {
+        case FollowStyle::Calm:
+            preset.margin = 0.08;
+            preset.settleMargin = 0.14;
+            break;
+        case FollowStyle::Standard:
+            preset.margin = 0.06;
+            preset.settleMargin = 0.11;
+            break;
+        case FollowStyle::Snappy:
+            preset.margin = 0.04;
+            preset.settleMargin = 0.08;
+            break;
+    }
+    return preset;
 }
 
 }  // namespace lz

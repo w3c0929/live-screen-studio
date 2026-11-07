@@ -3,8 +3,8 @@
 IDI_APPICON ICON "livezoom.ico"
 
 1 VERSIONINFO
- FILEVERSION 0,2,3,0
- PRODUCTVERSION 0,2,3,0
+ FILEVERSION 0,2,4,0
+ PRODUCTVERSION 0,2,4,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS 0x40004L
@@ -17,11 +17,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "LiveZoom"
             VALUE "FileDescription", "LiveZoom screen magnifier"
-            VALUE "FileVersion", "0.2.3"
+            VALUE "FileVersion", "0.2.4"
             VALUE "InternalName", "livezoom_win"
             VALUE "OriginalFilename", "livezoom_win.exe"
             VALUE "ProductName", "LiveZoom"
-            VALUE "ProductVersion", "0.2.3"
+            VALUE "ProductVersion", "0.2.4"
         END
     END
     BLOCK "VarFileInfo"

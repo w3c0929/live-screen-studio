@@ -95,9 +95,13 @@ void ZoomController::startZoom() {
     input_.setCursorBounds(lz::Rect{static_cast<lz::Real>(monitorRect_.left),
                                     static_cast<lz::Real>(monitorRect_.top),
                                     display_.width, display_.height});
-    std::printf("[livezoom] zoom on: %.2fx (drawing=%d overlay=%d)\n",
-                settings_.defaultZoom, settings_.drawWhileZoomed ? 1 : 0,
-                overlay_->visible() ? 1 : 0);
+    std::printf("[livezoom] zoom on: %.2fx display=%.0fx%.0f monitor=(%ld,%ld)-(%ld,%ld) "
+                "(drawing=%d overlay=%d)\n",
+                settings_.defaultZoom, display_.width, display_.height, monitorRect_.left,
+                monitorRect_.top, monitorRect_.right, monitorRect_.bottom,
+                settings_.drawWhileZoomed ? 1 : 0, overlay_->visible() ? 1 : 0);
+    lastPhase_ = lz::Phase::Idle;
+    followStartLogged_ = false;
 }
 
 void ZoomController::finish() {
@@ -175,6 +179,24 @@ void ZoomController::tick() {
         std::clamp(static_cast<lz::Real>(cursor.x - monitorRect_.left), 0.0, display_.width),
         std::clamp(static_cast<lz::Real>(cursor.y - monitorRect_.top), 0.0, display_.height)};
     camera_->update(local, now, dt);
+
+    if (camera_->phase() == lz::Phase::Zoomed) {
+        if (lastPhase_ != lz::Phase::Zoomed) {
+            lastCameraCenter_ = camera_->center();
+            followStartLogged_ = false;
+        } else if (!followStartLogged_ && !(camera_->center() == lastCameraCenter_)) {
+            const lz::Rect vp = camera_->viewport();
+            const double fraction = (local.x - vp.x) / vp.width;
+            std::printf("[livezoom] follow starts: cursor=(%.0f,%.0f) viewport=(%.0f,%.0f,"
+                        "%.0f,%.0f) xFraction=%.3f\n",
+                        local.x, local.y, vp.x, vp.y, vp.width, vp.height, fraction);
+            followStartLogged_ = true;
+        }
+        lastCameraCenter_ = camera_->center();
+    } else {
+        lastCameraCenter_ = camera_->center();
+    }
+    lastPhase_ = camera_->phase();
 
     const lz::Rect viewport = shownViewport();
     if (overlay_) {
