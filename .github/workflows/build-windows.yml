@@ -1,0 +1,49 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["windows-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure
+        run: cmake -S windows -B windows/build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build windows/build-release -j
+
+      - name: Test
+        run: ctest --test-dir windows/build-release --output-on-failure
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force windows/dist | Out-Null
+          Compress-Archive -Path windows/build-release/src/app/livezoom_win.exe,windows/README.md `
+            -DestinationPath windows/dist/LiveZoom-windows-x64-portable.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiveZoom-windows-x64
+          path: windows/dist/*.zip
+          if-no-files-found: error
