@@ -33,6 +33,8 @@ public:
     void setExcludeObs(bool exclude);
     /// The ink/cursor overlay must never be magnified, or it would be drawn twice.
     void setOverlayWindow(HWND overlay);
+    /// Asks the system to show the cursor again; safe to call repeatedly.
+    void ensureCursorVisible();
     /// Re-enumerates OBS windows (it can start or move while LiveZoom is running).
     void refreshExcludedWindows();
 

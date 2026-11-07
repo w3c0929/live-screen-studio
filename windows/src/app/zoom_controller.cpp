@@ -87,6 +87,8 @@ void ZoomController::startZoom() {
 
     active_ = true;
     lastTick_ = nowSeconds();
+    cursorRestoreAt_ = 0;
+    cursorRestoreTries_ = 0;
     input_.setZoomActive(true);
     input_.setDrawingArmed(settings_.drawWhileZoomed && overlay_->visible());
     input_.setHasStrokes(false);
@@ -107,6 +109,10 @@ void ZoomController::finish() {
     }
     engine_.setOverlayWindow(nullptr);
     engine_.hide();
+    // Some drivers apply the magnifier's cursor hide asynchronously. Retry after the zoom-out
+    // animation so the pointer is back without requiring Ctrl+Alt+Del.
+    cursorRestoreAt_ = nowSeconds() + 0.15;
+    cursorRestoreTries_ = 3;
     strokeDrawing_ = false;
     input_.setDrawingArmed(false);
     input_.setHasStrokes(false);
@@ -148,9 +154,18 @@ void ZoomController::adjustZoom(double steps) {
 }
 
 void ZoomController::tick() {
+    const double now = nowSeconds();
+    if (cursorRestoreAt_ > 0 && now >= cursorRestoreAt_) {
+        engine_.ensureCursorVisible();
+        if (--cursorRestoreTries_ > 0) {
+            cursorRestoreAt_ = now + 0.25;
+        } else {
+            cursorRestoreAt_ = 0;
+        }
+    }
+
     if (!active_ || !camera_) return;
 
-    const double now = nowSeconds();
     const double dt = std::clamp(now - lastTick_, 1.0 / 240.0, 1.0 / 20.0);
     lastTick_ = now;
 

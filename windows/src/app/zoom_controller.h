@@ -53,6 +53,8 @@ private:
     bool active_ = false;
     bool strokeDrawing_ = false;
     double lastTick_ = 0;
+    double cursorRestoreAt_ = 0;
+    int cursorRestoreTries_ = 0;
     LARGE_INTEGER frequency_{};
     LARGE_INTEGER start_{};
 };

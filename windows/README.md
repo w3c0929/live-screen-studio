@@ -44,6 +44,9 @@ Windows 10/11 x64 版 LiveZoom，使用 C++20 和原生 Win32 / Direct3D 11 / Di
 程序以 GUI 方式运行，不会弹出控制台。诊断日志位于
 `%APPDATA%\LiveZoom\livezoom.log`，每次启动会重新写入。
 
+缩回时程序会主动恢复系统光标：先隐藏放大窗口，再调用系统恢复并在必要时重载光标方案，
+随后还会重试几次，避免某些显卡/鼠标驱动下出现“放大后缩回看不到指针”的问题。
+
 ## OBS
 
 推荐使用 OBS 的 **显示器采集**。LiveZoom 的放大画面由 Windows Magnification API

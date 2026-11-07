@@ -190,11 +190,11 @@ void MagnificationEngine::showHost() {
 }
 
 void MagnificationEngine::hide() {
-    if (visible_) {
-        hideHardwareCursor(false);
-        if (host_) ShowWindow(host_, SW_HIDE);
-        visible_ = false;
-    }
+    // Hide the magnifier first. Some drivers keep the magnifier's cursor hide active until
+    // the magnified window is gone, so restoring before ShowWindow(SW_HIDE) leaves no cursor.
+    if (host_) ShowWindow(host_, SW_HIDE);
+    visible_ = false;
+    ensureCursorVisible();
 }
 
 void MagnificationEngine::setViewport(lz::Point sourceTopLeft, double zoom) {
@@ -254,9 +254,40 @@ void MagnificationEngine::refreshExcludedWindows() {
 
 void MagnificationEngine::hideHardwareCursor(bool hide) {
     if (!api_.showSystemCursor) return;
-    if (hide == hardwareCursorHidden_) return;
-    api_.showSystemCursor(hide ? FALSE : TRUE);
-    hardwareCursorHidden_ = hide;
+    if (!hide) {
+        ensureCursorVisible();
+        return;
+    }
+    if (hardwareCursorHidden_) return;
+    api_.showSystemCursor(FALSE);
+    hardwareCursorHidden_ = true;
+    std::printf("[livezoom] hardware cursor hidden\n");
+}
+
+void MagnificationEngine::ensureCursorVisible() {
+    if (!api_.showSystemCursor) return;
+    const bool wasHidden = hardwareCursorHidden_;
+    api_.showSystemCursor(TRUE);
+    hardwareCursorHidden_ = false;
+
+    // A cursor hidden by the magnifier can stay hidden on some drivers even after
+    // MagShowSystemCursor(TRUE). Reloading the current cursor scheme is the same recovery
+    // path as switching to the secure desktop, without forcing the user to press Ctrl+Alt+Del.
+    if (wasHidden) {
+        SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, SPIF_SENDCHANGE);
+        api_.showSystemCursor(TRUE);
+    }
+
+    CURSORINFO info{};
+    info.cbSize = sizeof(info);
+    const bool showing = GetCursorInfo(&info) && (info.flags & CURSOR_SHOWING) != 0;
+    if (!showing) {
+        for (int i = 0; i < 8; ++i) ShowCursor(TRUE);
+        POINT cursor{};
+        if (GetCursorPos(&cursor)) SetCursorPos(cursor.x, cursor.y);
+    }
+    std::printf("[livezoom] cursor restore: wasHidden=%d showing=%d\n", wasHidden ? 1 : 0,
+                showing ? 1 : 0);
 }
 
 LRESULT CALLBACK MagnificationEngine::hostProc(HWND hwnd, UINT message, WPARAM wParam,
