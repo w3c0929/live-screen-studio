@@ -37,6 +37,7 @@ public:
     void beginStroke(lz::Point content);
     void extendStroke(lz::Point content, bool straight);
     void endStroke();
+    void cancelStroke();
     void undo();
     void clear();
     [[nodiscard]] bool hasContent() const { return !annotations_.empty(); }

@@ -197,8 +197,12 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                         if (self->ctrlAtDown_) {
                             self->leftState_ = LeftState::Passthrough;
                         } else {
-                            self->leftState_ = LeftState::Pending;
+                            self->leftState_ = LeftState::Drawing;
                             self->downPoint_ = mouse->pt;
+                            self->moveCount_ = 0;
+                            std::printf("[hook] down (%ld,%ld)\n", mouse->pt.x,
+                                        mouse->pt.y);
+                            self->postStroke(kLiveZoomStrokeBegin, self->downPoint_, shift);
                             return 1;
                         }
                     } else {
@@ -206,31 +210,31 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                     }
                     break;
                 case WM_MOUSEMOVE:
-                    if (self->leftState_ == LeftState::Pending) {
-                        const int dx = mouse->pt.x - self->downPoint_.x;
-                        const int dy = mouse->pt.y - self->downPoint_.y;
-                        if (dx * dx + dy * dy >= kDragThreshold * kDragThreshold) {
-                            self->leftState_ = LeftState::Drawing;
-                            self->postStroke(kLiveZoomStrokeBegin, self->downPoint_, shift);
-                            self->postStroke(kLiveZoomStrokeMove, mouse->pt, shift);
-                            return 1;
-                        }
-                    } else if (self->leftState_ == LeftState::Drawing) {
+                    if (self->leftState_ == LeftState::Drawing) {
+                        ++self->moveCount_;
                         self->postStroke(kLiveZoomStrokeMove, mouse->pt, shift);
-                        return 1;
+                        // Let the cursor move. Swallowing move events freezes the system pointer,
+                        // and then every later sample is the same point; passing them through
+                        // keeps the pen and the magnified cursor together.
                     }
                     break;
                 case WM_LBUTTONUP:
-                    if (self->leftState_ == LeftState::Pending) {
-                        const POINT point = self->downPoint_;
-                        self->leftState_ = LeftState::Idle;
-                        self->replayClick(point);
-                        self->postPoint(kLiveZoomClick, point);
-                        return 1;
-                    }
                     if (self->leftState_ == LeftState::Drawing) {
+                        const int dx = mouse->pt.x - self->downPoint_.x;
+                        const int dy = mouse->pt.y - self->downPoint_.y;
                         self->leftState_ = LeftState::Idle;
-                        PostMessageW(self->target_, kLiveZoomStrokeEnd, 0, 0);
+                        std::printf("[hook] up dist=%d moves=%d\n",
+                                    static_cast<int>(std::lround(std::hypot(dx, dy))),
+                                    self->moveCount_);
+                        if (dx * dx + dy * dy <
+                            kDragThreshold * kDragThreshold) {
+                            PostMessageW(self->target_, kLiveZoomStrokeCancel, 0, 0);
+                            self->replayClick(self->downPoint_);
+                            self->postPoint(kLiveZoomClick, self->downPoint_);
+                        } else {
+                            self->postStroke(kLiveZoomStrokeMove, mouse->pt, shift);
+                            PostMessageW(self->target_, kLiveZoomStrokeEnd, 0, 0);
+                        }
                         return 1;
                     }
                     if (self->leftState_ == LeftState::Passthrough) {

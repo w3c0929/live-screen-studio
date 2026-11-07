@@ -267,6 +267,9 @@ void OverlayRenderer::setClickEffect(lz::ClickEffect effect, lz::Rgba color) {
 
 void OverlayRenderer::beginStroke(lz::Point content) {
     if (!visible_) return;
+    if (strokeInProgress_ && !annotations_.empty()) {
+        annotations_.pop_back();
+    }
     annotations_.push_back(lz::Annotation::stroke(content, ink_, mappingZoom_));
     strokeInProgress_ = true;
 }
@@ -278,6 +281,12 @@ void OverlayRenderer::extendStroke(lz::Point content, bool straight) {
 
 void OverlayRenderer::endStroke() {
     if (!annotations_.empty()) annotations_.back().complete = true;
+    strokeInProgress_ = false;
+}
+
+void OverlayRenderer::cancelStroke() {
+    if (!strokeInProgress_) return;
+    if (!annotations_.empty()) annotations_.pop_back();
     strokeInProgress_ = false;
 }
 
@@ -496,6 +505,9 @@ void OverlayRenderer::drawHighlight(const lz::Annotation& annotation) {
 }
 
 void OverlayRenderer::drawAnnotation(const lz::Annotation& annotation) {
+    // A left press starts a stroke immediately; while it is still a single point it is either a
+    // click that will be cancelled, or the start of a line. Drawing it would flash a dot.
+    if (!annotation.spotlight && annotation.points.size() == 1) return;
     if (annotation.spotlight) {
         drawHighlight(annotation);
     } else if (!annotation.points.empty()) {

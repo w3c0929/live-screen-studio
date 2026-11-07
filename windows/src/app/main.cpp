@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "input_hook.h"
 #include "magnification_engine.h"
@@ -105,6 +106,9 @@ LRESULT CALLBACK mainProc(HWND window, UINT message, WPARAM wParam, LPARAM lPara
         case kLiveZoomStrokeEnd:
             g_controller->endStroke();
             return 0;
+        case kLiveZoomStrokeCancel:
+            g_controller->cancelStroke();
+            return 0;
         case kLiveZoomUndo:
             g_controller->undoStroke();
             return 0;
@@ -151,9 +155,30 @@ LRESULT CALLBACK mainProc(HWND window, UINT message, WPARAM wParam, LPARAM lPara
     return DefWindowProcW(window, message, wParam, lParam);
 }
 
-BOOL WINAPI consoleCtrlHandler(DWORD) {
-    if (g_window) PostMessageW(g_window, WM_CLOSE, 0, 0);
-    return TRUE;
+void redirectLogsToFile() {
+    wchar_t appData[MAX_PATH]{};
+    const DWORD length = GetEnvironmentVariableW(L"APPDATA", appData, MAX_PATH);
+    std::wstring directory = length ? std::wstring(appData, length) : std::wstring(L".");
+    directory += L"\\LiveZoom";
+    CreateDirectoryW(directory.c_str(), nullptr);
+    const std::wstring path = directory + L"\\livezoom.log";
+    if (_wfreopen(path.c_str(), L"w", stdout)) {
+        setvbuf(stdout, nullptr, _IONBF, 0);
+        std::printf("[livezoom] log started\n");
+    }
+    if (_wfreopen(path.c_str(), L"a", stderr)) {
+        setvbuf(stderr, nullptr, _IONBF, 0);
+    }
+}
+
+std::string utf8FromWide(const wchar_t* text) {
+    if (!text) return {};
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return {};
+    std::string result(static_cast<size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text, -1, result.data(), size, nullptr, nullptr);
+    result.resize(static_cast<size_t>(size - 1));
+    return result;
 }
 
 std::wstring widen(const std::string& text) {
@@ -168,8 +193,7 @@ std::wstring widen(const std::string& text) {
 
 }  // namespace
 
-int main(int argc, char** argv) {
-    SetConsoleOutputCP(CP_UTF8);
+int run(int argc, char** argv) {
     bool acceptInjected = false;
     bool openSettings = false;
     double runSeconds = 0;
@@ -184,7 +208,6 @@ int main(int argc, char** argv) {
         }
     }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    SetConsoleCtrlHandler(consoleCtrlHandler, TRUE);
 
     HANDLE singleInstance = CreateMutexW(nullptr, TRUE, L"Local\\LiveZoomWin_SingleInstance");
     if (singleInstance && GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -265,4 +288,28 @@ int main(int argc, char** argv) {
     if (singleInstance) CloseHandle(singleInstance);
     std::printf("[livezoom] done\n");
     return 0;
+}
+
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    redirectLogsToFile();
+
+    int argc = 0;
+    wchar_t** wide = CommandLineToArgvW(GetCommandLineW(), &argc);
+    std::vector<std::string> args;
+    std::vector<char*> argv;
+    if (wide && argc > 0) {
+        args.reserve(static_cast<size_t>(argc));
+        for (int i = 0; i < argc; ++i) args.push_back(utf8FromWide(wide[i]));
+    } else {
+        args.push_back("livezoom_win.exe");
+        argc = 1;
+    }
+    argv.reserve(args.size() + 1);
+    for (std::string& arg : args) argv.push_back(arg.data());
+    argv.push_back(nullptr);
+
+    const int result = run(argc, argv.data());
+    if (wide) LocalFree(wide);
+    std::printf("[livezoom] exit %d\n", result);
+    return result;
 }

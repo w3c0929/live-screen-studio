@@ -92,7 +92,9 @@ void ZoomController::startZoom() {
     input_.setCursorBounds(lz::Rect{static_cast<lz::Real>(monitorRect_.left),
                                     static_cast<lz::Real>(monitorRect_.top),
                                     display_.width, display_.height});
-    std::printf("[livezoom] zoom on: %.2fx\n", settings_.defaultZoom);
+    std::printf("[livezoom] zoom on: %.2fx (drawing=%d overlay=%d)\n",
+                settings_.defaultZoom, settings_.drawWhileZoomed ? 1 : 0,
+                overlay_->visible() ? 1 : 0);
 }
 
 void ZoomController::finish() {
@@ -104,6 +106,7 @@ void ZoomController::finish() {
     }
     engine_.setOverlayWindow(nullptr);
     engine_.hide();
+    strokeDrawing_ = false;
     input_.setDrawingArmed(false);
     input_.setHasStrokes(false);
     input_.setZoomActive(false);
@@ -160,6 +163,12 @@ void ZoomController::tick() {
     const lz::Rect viewport = shownViewport();
     if (overlay_) {
         overlay_->setMapping(viewport.origin(), camera_->zoom(), display_);
+        // The hook also sends moves, but sampling here keeps the line continuous even when a
+        // busy main thread or a mouse driver drops some of them.
+        if (strokeDrawing_) {
+            const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            overlay_->extendStroke(contentPoint(cursor.x, cursor.y), shift);
+        }
         overlay_->render(now);
     }
     engine_.setViewport({viewport.x + static_cast<lz::Real>(monitorRect_.left),
@@ -183,6 +192,7 @@ void ZoomController::beginStroke(int x, int y) {
     overlay_->setMapping(shownViewport().origin(), camera_->zoom(), display_);
     overlay_->beginStroke(contentPoint(x, y));
     camera_->setFollowPaused(true);
+    strokeDrawing_ = true;
 }
 
 void ZoomController::moveStroke(int x, int y, bool straight) {
@@ -192,7 +202,17 @@ void ZoomController::moveStroke(int x, int y, bool straight) {
 
 void ZoomController::endStroke() {
     if (!active_ || !overlay_) return;
+    strokeDrawing_ = false;
     overlay_->endStroke();
+    camera_->setFollowPaused(false);
+    input_.setHasStrokes(overlay_->hasContent());
+    std::printf("[livezoom] stroke end, content=%d\n", overlay_->hasContent() ? 1 : 0);
+}
+
+void ZoomController::cancelStroke() {
+    if (!overlay_) return;
+    strokeDrawing_ = false;
+    overlay_->cancelStroke();
     camera_->setFollowPaused(false);
     input_.setHasStrokes(overlay_->hasContent());
 }

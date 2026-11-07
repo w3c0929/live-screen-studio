@@ -1,4 +1,4 @@
-add_executable(livezoom_win
+add_executable(livezoom_win WIN32
     main.cpp
     zoom_controller.cpp
     settings.cpp

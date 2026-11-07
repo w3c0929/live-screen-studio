@@ -31,7 +31,7 @@ Windows 10/11 x64 版 LiveZoom，使用 C++20 和原生 Win32 / Direct3D 11 / Di
 | --- | --- |
 | 中键单击 | 放大 / 缩回 |
 | 按住中键 + 滚轮 | 调整倍数 |
-| 左键拖动 | 画线（放大时） |
+| 左键拖动 | 画线（放大时，鼠标跟着笔尖移动） |
 | Shift + 左键拖动 | 直线 |
 | Ctrl + 左键拖动 | 正常拖拽 |
 | 左键单击 | 转发点击并显示波纹 |
@@ -39,6 +39,9 @@ Windows 10/11 x64 版 LiveZoom，使用 C++20 和原生 Win32 / Direct3D 11 / Di
 | Esc | 清除全部笔迹 |
 
 第一次运行会在 `%APPDATA%\LiveZoom\settings.ini` 创建配置文件。
+
+程序以 GUI 方式运行，不会弹出控制台。诊断日志位于
+`%APPDATA%\LiveZoom\livezoom.log`，每次启动会重新写入。
 
 ## OBS
 

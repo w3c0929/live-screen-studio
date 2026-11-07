@@ -18,6 +18,7 @@ inline constexpr UINT kLiveZoomStrokeEnd = WM_APP + 7;
 inline constexpr UINT kLiveZoomUndo = WM_APP + 8;
 inline constexpr UINT kLiveZoomClear = WM_APP + 9;
 inline constexpr UINT kLiveZoomClick = WM_APP + 10;
+inline constexpr UINT kLiveZoomStrokeCancel = WM_APP + 11;
 inline constexpr UINT kLiveZoomTray = WM_APP + 100;
 
 /// Heap-allocated stroke point delivered from the hook thread; the UI thread deletes it.
@@ -82,12 +83,12 @@ private:
 
     enum class LeftState {
         Idle,
-        Pending,
         Drawing,
         Passthrough,
     };
     LeftState leftState_ = LeftState::Idle;
     POINT downPoint_{};
+    int moveCount_ = 0;
     bool ctrlAtDown_ = false;
     bool swallowRightUp_ = false;
     HHOOK mouseHook_ = nullptr;

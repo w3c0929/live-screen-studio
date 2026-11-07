@@ -27,6 +27,7 @@ public:
     void beginStroke(int x, int y);
     void moveStroke(int x, int y, bool straight);
     void endStroke();
+    void cancelStroke();
     void undoStroke();
     void clearStrokes();
     void reloadSettings();
@@ -50,6 +51,7 @@ private:
     RECT monitorRect_{};
     lz::Size display_{};
     bool active_ = false;
+    bool strokeDrawing_ = false;
     double lastTick_ = 0;
     LARGE_INTEGER frequency_{};
     LARGE_INTEGER start_{};
