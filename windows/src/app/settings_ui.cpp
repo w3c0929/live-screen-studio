@@ -14,11 +14,19 @@ constexpr int kIdFollow = 1002;
 constexpr int kIdDraw = 1003;
 constexpr int kIdSmooth = 1004;
 constexpr int kIdObs = 1005;
+constexpr int kIdInkStyle = 1006;
+constexpr int kIdInkColor = 1007;
+constexpr int kIdInkWidth = 1008;
+constexpr int kIdClickEffect = 1009;
+constexpr int kIdClickColor = 1010;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 
 constexpr double kZoomValues[] = {1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0};
 constexpr int kZoomCount = static_cast<int>(sizeof(kZoomValues) / sizeof(kZoomValues[0]));
+constexpr double kStrokeWidths[] = {2.0, 3.0, 5.0, 8.0, 12.0, 16.0};
+constexpr int kStrokeWidthCount =
+    static_cast<int>(sizeof(kStrokeWidths) / sizeof(kStrokeWidths[0]));
 
 HWND g_dialog = nullptr;
 HWND g_zoomCombo = nullptr;
@@ -26,6 +34,11 @@ HWND g_followCombo = nullptr;
 HWND g_drawCheck = nullptr;
 HWND g_smoothCheck = nullptr;
 HWND g_obsCheck = nullptr;
+HWND g_inkStyleCombo = nullptr;
+HWND g_inkColorCombo = nullptr;
+HWND g_inkWidthCombo = nullptr;
+HWND g_clickEffectCombo = nullptr;
+HWND g_clickColorCombo = nullptr;
 lz::Settings* g_settings = nullptr;
 bool g_done = false;
 
@@ -85,6 +98,19 @@ int nearestZoomIndex(double zoom) {
     return best;
 }
 
+int nearestWidthIndex(double width) {
+    int best = 0;
+    double distance = std::abs(kStrokeWidths[0] - width);
+    for (int i = 1; i < kStrokeWidthCount; ++i) {
+        const double current = std::abs(kStrokeWidths[i] - width);
+        if (current < distance) {
+            distance = current;
+            best = i;
+        }
+    }
+    return best;
+}
+
 void createControls(HWND dialog) {
     addStatic(dialog, L"默认倍数", 24, 24, 100, 22);
     g_zoomCombo = addCombo(dialog, kIdZoom, 140, 20, 120, 220);
@@ -116,16 +142,73 @@ void createControls(HWND dialog) {
     g_obsCheck = addCheck(dialog, kIdObs, L"排除 OBS 窗口", 24, 172, 300, 24);
     SendMessageW(g_obsCheck, BM_SETCHECK, g_settings->excludeObs ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    addStatic(dialog, L"标注与点击", 420, 20, 200, 22);
+
+    addStatic(dialog, L"笔迹样式", 420, 56, 110, 22);
+    g_inkStyleCombo = addCombo(dialog, kIdInkStyle, 540, 52, 150, 220);
+    SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"马克笔"));
+    SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"霓虹"));
+    SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"荧光笔"));
+    SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"箭头"));
+    SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"流动虚线"));
+    int styleIndex = 0;
+    switch (g_settings->inkStyle) {
+        case lz::InkStyle::Marker: styleIndex = 0; break;
+        case lz::InkStyle::Neon: styleIndex = 1; break;
+        case lz::InkStyle::Highlighter: styleIndex = 2; break;
+        case lz::InkStyle::Arrow: styleIndex = 3; break;
+        case lz::InkStyle::Dashed: styleIndex = 4; break;
+    }
+    SendMessageW(g_inkStyleCombo, CB_SETCURSEL, styleIndex, 0);
+
+    addStatic(dialog, L"笔迹颜色", 420, 92, 110, 22);
+    g_inkColorCombo = addCombo(dialog, kIdInkColor, 540, 88, 150, 220);
+    SendMessageW(g_inkColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"红"));
+    SendMessageW(g_inkColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"黄"));
+    SendMessageW(g_inkColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"绿"));
+    SendMessageW(g_inkColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"蓝"));
+    SendMessageW(g_inkColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"粉"));
+    SendMessageW(g_inkColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"白"));
+    SendMessageW(g_inkColorCombo, CB_SETCURSEL, static_cast<WPARAM>(g_settings->inkColor), 0);
+
+    addStatic(dialog, L"笔迹粗细", 420, 128, 110, 22);
+    g_inkWidthCombo = addCombo(dialog, kIdInkWidth, 540, 124, 150, 220);
+    for (double width : kStrokeWidths) {
+        wchar_t text[32];
+        std::swprintf(text, 32, L"%.0f px", width);
+        SendMessageW(g_inkWidthCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
+    }
+    SendMessageW(g_inkWidthCombo, CB_SETCURSEL, nearestWidthIndex(g_settings->strokeWidth), 0);
+
+    addStatic(dialog, L"点击效果", 420, 164, 110, 22);
+    g_clickEffectCombo = addCombo(dialog, kIdClickEffect, 540, 160, 150, 220);
+    SendMessageW(g_clickEffectCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"无"));
+    SendMessageW(g_clickEffectCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"波纹"));
+    SendMessageW(g_clickEffectCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"光圈"));
+    int effectIndex = 1;
+    if (g_settings->clickEffect == lz::ClickEffect::None) effectIndex = 0;
+    if (g_settings->clickEffect == lz::ClickEffect::Halo) effectIndex = 2;
+    SendMessageW(g_clickEffectCombo, CB_SETCURSEL, effectIndex, 0);
+
+    addStatic(dialog, L"点击颜色", 420, 200, 110, 22);
+    g_clickColorCombo = addCombo(dialog, kIdClickColor, 540, 196, 150, 220);
+    SendMessageW(g_clickColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"蓝"));
+    SendMessageW(g_clickColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"黄"));
+    SendMessageW(g_clickColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"红"));
+    SendMessageW(g_clickColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"绿"));
+    SendMessageW(g_clickColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"白"));
+    SendMessageW(g_clickColorCombo, CB_SETCURSEL, static_cast<WPARAM>(g_settings->clickColor), 0);
+
     addStatic(dialog,
               L"中键：放大/缩回    按住中键滚动：调倍\n"
               L"放大后左键拖动：画线    Shift：直线\n"
               L"Ctrl+左键拖动：正常拖拽    右键：撤销\n"
               L"Esc：清除笔迹\n"
               L"跟随速度越灵敏，画布越晚开始移动",
-              24, 208, 400, 84);
+              24, 220, 370, 100);
 
-    addButton(dialog, kIdOk, L"确定", 250, 292, 86, 30);
-    addButton(dialog, kIdCancel, L"取消", 346, 292, 86, 30);
+    addButton(dialog, kIdOk, L"确定", 590, 330, 86, 30);
+    addButton(dialog, kIdCancel, L"取消", 686, 330, 86, 30);
 }
 
 void readControls() {
@@ -143,6 +226,41 @@ void readControls() {
         SendMessageW(g_smoothCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->excludeObs =
         SendMessageW(g_obsCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+
+    const int styleIndex = static_cast<int>(SendMessageW(g_inkStyleCombo, CB_GETCURSEL, 0, 0));
+    switch (styleIndex) {
+        case 1: g_settings->inkStyle = lz::InkStyle::Neon; break;
+        case 2: g_settings->inkStyle = lz::InkStyle::Highlighter; break;
+        case 3: g_settings->inkStyle = lz::InkStyle::Arrow; break;
+        case 4: g_settings->inkStyle = lz::InkStyle::Dashed; break;
+        default: g_settings->inkStyle = lz::InkStyle::Marker; break;
+    }
+
+    const int colorIndex = static_cast<int>(SendMessageW(g_inkColorCombo, CB_GETCURSEL, 0, 0));
+    g_settings->inkColor = colorIndex >= 0 && colorIndex <= 5
+                               ? static_cast<lz::InkPalette>(colorIndex)
+                               : lz::InkPalette::Red;
+
+    const int widthIndex = static_cast<int>(SendMessageW(g_inkWidthCombo, CB_GETCURSEL, 0, 0));
+    if (widthIndex >= 0 && widthIndex < kStrokeWidthCount) {
+        g_settings->strokeWidth = kStrokeWidths[widthIndex];
+    }
+
+    const int effectIndex =
+        static_cast<int>(SendMessageW(g_clickEffectCombo, CB_GETCURSEL, 0, 0));
+    if (effectIndex == 0) {
+        g_settings->clickEffect = lz::ClickEffect::None;
+    } else if (effectIndex == 2) {
+        g_settings->clickEffect = lz::ClickEffect::Halo;
+    } else {
+        g_settings->clickEffect = lz::ClickEffect::Ripple;
+    }
+
+    const int clickColorIndex =
+        static_cast<int>(SendMessageW(g_clickColorCombo, CB_GETCURSEL, 0, 0));
+    g_settings->clickColor = clickColorIndex >= 0 && clickColorIndex <= 4
+                                 ? static_cast<lz::ClickPalette>(clickColorIndex)
+                                 : lz::ClickPalette::Blue;
 }
 
 LRESULT CALLBACK settingsProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -189,8 +307,8 @@ void showSettingsDialog(HWND owner, lz::Settings& settings) {
     windowClass.lpszClassName = kSettingsClass;
     RegisterClassExW(&windowClass);
 
-    const int width = 460;
-    const int height = 380;
+    const int width = 780;
+    const int height = 400;
     const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 

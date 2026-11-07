@@ -40,6 +40,80 @@ void writeString(const std::wstring& path, const wchar_t* key, const std::wstrin
     WritePrivateProfileStringW(kSection, key, value.c_str(), path.c_str());
 }
 
+const wchar_t* inkStyleName(InkStyle style) {
+    switch (style) {
+        case InkStyle::Marker: return L"marker";
+        case InkStyle::Neon: return L"neon";
+        case InkStyle::Highlighter: return L"highlighter";
+        case InkStyle::Arrow: return L"arrow";
+        case InkStyle::Dashed: return L"dashed";
+    }
+    return L"marker";
+}
+
+InkStyle inkStyleFromName(const std::wstring& name) {
+    if (name == L"neon") return InkStyle::Neon;
+    if (name == L"highlighter") return InkStyle::Highlighter;
+    if (name == L"arrow") return InkStyle::Arrow;
+    if (name == L"dashed") return InkStyle::Dashed;
+    return InkStyle::Marker;
+}
+
+const wchar_t* inkColorName(InkPalette color) {
+    switch (color) {
+        case InkPalette::Red: return L"red";
+        case InkPalette::Yellow: return L"yellow";
+        case InkPalette::Green: return L"green";
+        case InkPalette::Blue: return L"blue";
+        case InkPalette::Pink: return L"pink";
+        case InkPalette::White: return L"white";
+    }
+    return L"red";
+}
+
+InkPalette inkColorFromName(const std::wstring& name) {
+    if (name == L"yellow") return InkPalette::Yellow;
+    if (name == L"green") return InkPalette::Green;
+    if (name == L"blue") return InkPalette::Blue;
+    if (name == L"pink") return InkPalette::Pink;
+    if (name == L"white") return InkPalette::White;
+    return InkPalette::Red;
+}
+
+const wchar_t* clickEffectName(ClickEffect effect) {
+    switch (effect) {
+        case ClickEffect::None: return L"none";
+        case ClickEffect::Ripple: return L"ripple";
+        case ClickEffect::Halo: return L"halo";
+    }
+    return L"ripple";
+}
+
+ClickEffect clickEffectFromName(const std::wstring& name) {
+    if (name == L"none") return ClickEffect::None;
+    if (name == L"halo") return ClickEffect::Halo;
+    return ClickEffect::Ripple;
+}
+
+const wchar_t* clickColorName(ClickPalette color) {
+    switch (color) {
+        case ClickPalette::Blue: return L"blue";
+        case ClickPalette::Yellow: return L"yellow";
+        case ClickPalette::Red: return L"red";
+        case ClickPalette::Green: return L"green";
+        case ClickPalette::White: return L"white";
+    }
+    return L"blue";
+}
+
+ClickPalette clickColorFromName(const std::wstring& name) {
+    if (name == L"yellow") return ClickPalette::Yellow;
+    if (name == L"red") return ClickPalette::Red;
+    if (name == L"green") return ClickPalette::Green;
+    if (name == L"white") return ClickPalette::White;
+    return ClickPalette::Blue;
+}
+
 }  // namespace
 
 std::wstring Settings::path() const {
@@ -70,6 +144,12 @@ bool Settings::load() {
     } else {
         follow = FollowStyle::Calm;
     }
+
+    inkStyle = inkStyleFromName(readString(file, L"inkStyle", L"marker"));
+    inkColor = inkColorFromName(readString(file, L"inkColor", L"red"));
+    strokeWidth = std::clamp(readDouble(file, L"strokeWidth", strokeWidth), 1.0, 30.0);
+    clickEffect = clickEffectFromName(readString(file, L"clickEffect", L"ripple"));
+    clickColor = clickColorFromName(readString(file, L"clickColor", L"blue"));
     return true;
 }
 
@@ -87,7 +167,38 @@ bool Settings::save() const {
     if (follow == FollowStyle::Standard) followName = L"standard";
     if (follow == FollowStyle::Snappy) followName = L"snappy";
     writeString(file, L"follow", followName);
+    writeString(file, L"inkStyle", inkStyleName(inkStyle));
+    writeString(file, L"inkColor", inkColorName(inkColor));
+    writeString(file, L"strokeWidth", std::to_wstring(strokeWidth));
+    writeString(file, L"clickEffect", clickEffectName(clickEffect));
+    writeString(file, L"clickColor", clickColorName(clickColor));
     return true;
+}
+
+InkLook Settings::inkLook() const {
+    InkLook look;
+    look.style = inkStyle;
+    look.width = strokeWidth;
+    switch (inkColor) {
+        case InkPalette::Red: look.color = {1.0f, 0.23f, 0.19f, 1.0f}; break;
+        case InkPalette::Yellow: look.color = {1.0f, 0.82f, 0.10f, 1.0f}; break;
+        case InkPalette::Green: look.color = {0.20f, 0.88f, 0.50f, 1.0f}; break;
+        case InkPalette::Blue: look.color = {0.25f, 0.60f, 1.00f, 1.0f}; break;
+        case InkPalette::Pink: look.color = {1.0f, 0.33f, 0.72f, 1.0f}; break;
+        case InkPalette::White: look.color = {1.0f, 1.0f, 1.0f, 1.0f}; break;
+    }
+    return look;
+}
+
+Rgba Settings::clickRgba() const {
+    switch (clickColor) {
+        case ClickPalette::Blue: return {0.20f, 0.55f, 1.00f, 1.0f};
+        case ClickPalette::Yellow: return {1.00f, 0.80f, 0.10f, 1.0f};
+        case ClickPalette::Red: return {1.00f, 0.30f, 0.30f, 1.0f};
+        case ClickPalette::Green: return {0.20f, 0.85f, 0.50f, 1.0f};
+        case ClickPalette::White: return {1.00f, 1.00f, 1.00f, 1.0f};
+    }
+    return {0.20f, 0.55f, 1.00f, 1.0f};
 }
 
 FollowPreset Settings::followPreset() const {

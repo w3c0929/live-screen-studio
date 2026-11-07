@@ -64,12 +64,8 @@ void ZoomController::startZoom() {
     display_ = {static_cast<lz::Real>(monitorRect_.right - monitorRect_.left),
                 static_cast<lz::Real>(monitorRect_.bottom - monitorRect_.top)};
 
-    lz::InkLook ink;
-    ink.style = lz::InkStyle::Marker;
-    ink.color = {1.0f, 0.23f, 0.19f, 1.0f};
-    ink.width = 5.0;
-    overlay_->setInk(ink);
-    overlay_->setClickEffect(lz::ClickEffect::Ripple, {0.20f, 0.55f, 1.0f, 1.0f});
+    overlay_->setInk(settings_.inkLook());
+    overlay_->setClickEffect(settings_.clickEffect, settings_.clickRgba());
     const bool overlayShown = overlay_->showForMonitor(monitor);
     engine_.setOverlayWindow(overlayShown ? overlay_->hwnd() : nullptr);
     overlay_->setMapping({0, 0}, 1.0, display_);
@@ -281,5 +277,9 @@ void ZoomController::reloadSettings() {
     }
     engine_.setSmoothing(settings_.smoothImage);
     engine_.setExcludeObs(settings_.excludeObs);
+    if (overlay_) {
+        overlay_->setInk(settings_.inkLook());
+        overlay_->setClickEffect(settings_.clickEffect, settings_.clickRgba());
+    }
     input_.setDrawingArmed(settings_.drawWhileZoomed && overlay_ && overlay_->visible());
 }
