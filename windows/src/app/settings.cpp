@@ -135,6 +135,7 @@ bool Settings::load() {
     excludeObs = readBool(file, L"excludeObs", excludeObs);
     drawWhileZoomed = readBool(file, L"drawWhileZoomed", drawWhileZoomed);
     blankSystemCursor = readBool(file, L"blankSystemCursor", blankSystemCursor);
+    cursorSize = std::clamp(readDouble(file, L"cursorSize", cursorSize), 0.5, 3.0);
 
     const std::wstring followName = readString(file, L"follow", L"calm");
     if (followName == L"standard") {
@@ -163,6 +164,7 @@ bool Settings::save() const {
     writeString(file, L"excludeObs", excludeObs ? L"1" : L"0");
     writeString(file, L"drawWhileZoomed", drawWhileZoomed ? L"1" : L"0");
     writeString(file, L"blankSystemCursor", blankSystemCursor ? L"1" : L"0");
+    writeString(file, L"cursorSize", std::to_wstring(cursorSize));
     const wchar_t* followName = L"calm";
     if (follow == FollowStyle::Standard) followName = L"standard";
     if (follow == FollowStyle::Snappy) followName = L"snappy";

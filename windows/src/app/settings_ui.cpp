@@ -19,6 +19,7 @@ constexpr int kIdInkColor = 1007;
 constexpr int kIdInkWidth = 1008;
 constexpr int kIdClickEffect = 1009;
 constexpr int kIdClickColor = 1010;
+constexpr int kIdCursorSize = 1011;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 
@@ -27,6 +28,8 @@ constexpr int kZoomCount = static_cast<int>(sizeof(kZoomValues) / sizeof(kZoomVa
 constexpr double kStrokeWidths[] = {2.0, 3.0, 5.0, 8.0, 12.0, 16.0};
 constexpr int kStrokeWidthCount =
     static_cast<int>(sizeof(kStrokeWidths) / sizeof(kStrokeWidths[0]));
+constexpr double kCursorSizes[] = {0.8, 1.0, 1.2, 1.5, 2.0};
+constexpr int kCursorSizeCount = static_cast<int>(sizeof(kCursorSizes) / sizeof(kCursorSizes[0]));
 
 HWND g_dialog = nullptr;
 HWND g_zoomCombo = nullptr;
@@ -39,6 +42,7 @@ HWND g_inkColorCombo = nullptr;
 HWND g_inkWidthCombo = nullptr;
 HWND g_clickEffectCombo = nullptr;
 HWND g_clickColorCombo = nullptr;
+HWND g_cursorSizeCombo = nullptr;
 lz::Settings* g_settings = nullptr;
 bool g_done = false;
 
@@ -103,6 +107,19 @@ int nearestWidthIndex(double width) {
     double distance = std::abs(kStrokeWidths[0] - width);
     for (int i = 1; i < kStrokeWidthCount; ++i) {
         const double current = std::abs(kStrokeWidths[i] - width);
+        if (current < distance) {
+            distance = current;
+            best = i;
+        }
+    }
+    return best;
+}
+
+int nearestCursorSizeIndex(double size) {
+    int best = 0;
+    double distance = std::abs(kCursorSizes[0] - size);
+    for (int i = 1; i < kCursorSizeCount; ++i) {
+        const double current = std::abs(kCursorSizes[i] - size);
         if (current < distance) {
             distance = current;
             best = i;
@@ -199,6 +216,16 @@ void createControls(HWND dialog) {
     SendMessageW(g_clickColorCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"白"));
     SendMessageW(g_clickColorCombo, CB_SETCURSEL, static_cast<WPARAM>(g_settings->clickColor), 0);
 
+    addStatic(dialog, L"光标大小", 420, 236, 110, 22);
+    g_cursorSizeCombo = addCombo(dialog, kIdCursorSize, 540, 232, 150, 220);
+    for (double size : kCursorSizes) {
+        wchar_t text[32];
+        std::swprintf(text, 32, L"%.1fx", size);
+        SendMessageW(g_cursorSizeCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
+    }
+    SendMessageW(g_cursorSizeCombo, CB_SETCURSEL,
+                 nearestCursorSizeIndex(g_settings->cursorSize), 0);
+
     addStatic(dialog,
               L"中键：放大/缩回    按住中键滚动：调倍\n"
               L"放大后左键拖动：画线    Shift：直线\n"
@@ -261,6 +288,12 @@ void readControls() {
     g_settings->clickColor = clickColorIndex >= 0 && clickColorIndex <= 4
                                  ? static_cast<lz::ClickPalette>(clickColorIndex)
                                  : lz::ClickPalette::Blue;
+
+    const int cursorSizeIndex =
+        static_cast<int>(SendMessageW(g_cursorSizeCombo, CB_GETCURSEL, 0, 0));
+    if (cursorSizeIndex >= 0 && cursorSizeIndex < kCursorSizeCount) {
+        g_settings->cursorSize = kCursorSizes[cursorSizeIndex];
+    }
 }
 
 LRESULT CALLBACK settingsProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {

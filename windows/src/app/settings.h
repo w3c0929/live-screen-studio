@@ -42,6 +42,7 @@ struct Settings {
     bool drawWhileZoomed = true;
     bool blankSystemCursor = false;
 
+    double cursorSize = 1.2;
     InkStyle inkStyle = InkStyle::Marker;
     InkPalette inkColor = InkPalette::Red;
     double strokeWidth = 5.0;

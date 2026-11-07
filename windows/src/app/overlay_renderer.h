@@ -44,6 +44,8 @@ public:
 
     void addHighlight(HighlightKind kind, lz::Rect line);
     void addClick(lz::Point screenLocal, double now);
+    /// Screen-local position of the drawn cursor, scaled with the zoom.
+    void setCursor(lz::Point position, double scale, bool visible);
     void setInk(const lz::InkLook& ink) { ink_ = ink; }
     void setClickEffect(lz::ClickEffect effect, lz::Rgba color);
 
@@ -74,6 +76,8 @@ private:
     void drawStyledGeometry(ID2D1Geometry* geometry, const lz::InkLook& look, double width,
                             lz::InkStyle style);
     void drawClicks(double now);
+    void drawCursor();
+    bool buildCursorPath();
     void setBrush(const lz::Rgba& color, float alphaScale = 1.0f);
 
     HWND hwnd_ = nullptr;
@@ -93,6 +97,10 @@ private:
     Microsoft::WRL::ComPtr<ID2D1StrokeStyle> roundStyle_;
     Microsoft::WRL::ComPtr<ID2D1StrokeStyle> buttStyle_;
     Microsoft::WRL::ComPtr<ID2D1StrokeStyle> dashStyle_;
+    Microsoft::WRL::ComPtr<ID2D1PathGeometry> cursorPath_;
+    lz::Point cursorPosition_{};
+    double cursorScale_ = 1;
+    bool cursorVisible_ = false;
     Microsoft::WRL::ComPtr<IDCompositionDevice> dcompDevice_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> dcompTarget_;
     Microsoft::WRL::ComPtr<IDCompositionVisual> dcompVisual_;

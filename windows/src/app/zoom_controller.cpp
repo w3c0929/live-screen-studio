@@ -203,6 +203,11 @@ void ZoomController::tick() {
             const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
             overlay_->extendStroke(contentPoint(cursor.x, cursor.y), shift);
         }
+        const lz::Point content = contentPoint(cursor.x, cursor.y);
+        const double zoom = camera_->zoom();
+        overlay_->setCursor(
+            {(content.x - viewport.x) * zoom, (content.y - viewport.y) * zoom},
+            zoom * settings_.cursorSize, true);
         overlay_->render(now);
     }
     engine_.setViewport({viewport.x + static_cast<lz::Real>(monitorRect_.left),

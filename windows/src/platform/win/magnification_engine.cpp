@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <cwctype>
 #include <iterator>
 #include <string>
@@ -82,6 +83,9 @@ bool MagnificationEngine::initialize(std::string& error) {
         return false;
     }
     registerHostClass();
+    lastAlive_ = GetTickCount64();
+    watchStop_ = false;
+    cursorWatchdog_ = std::thread(&MagnificationEngine::cursorWatchdogLoop, this);
     return true;
 }
 
@@ -89,6 +93,8 @@ void MagnificationEngine::shutdown() {
     hide();
     hideHardwareCursor(false);
     destroyHost();
+    watchStop_ = true;
+    if (cursorWatchdog_.joinable()) cursorWatchdog_.join();
     if (api_.uninitialize) {
         api_.uninitialize();
         api_.uninitialize = nullptr;
@@ -130,9 +136,11 @@ bool MagnificationEngine::createHost(HMONITOR monitor) {
         return false;
     }
 
+    // No MS_SHOWMAGNIFIEDCURSOR: the overlay draws a custom cursor above the magnified
+    // content, at the same mapped position as the ink and click effects.
     mag_ = CreateWindowExW(
         0, WC_MAGNIFIER, L"MagnifierWindow",
-        WS_CHILD | WS_VISIBLE | MS_SHOWMAGNIFIEDCURSOR,
+        WS_CHILD | WS_VISIBLE,
         0, 0, width, height, host_, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!mag_) {
         std::printf("[livezoom] CreateWindowEx(WC_MAGNIFIER) failed: %lu\n", GetLastError());
@@ -186,6 +194,7 @@ void MagnificationEngine::showHost() {
     UpdateWindow(host_);
     refreshExcludedWindows();
     hideHardwareCursor(true);
+    lastAlive_ = GetTickCount64();
     visible_ = true;
 }
 
@@ -195,10 +204,12 @@ void MagnificationEngine::hide() {
     if (host_) ShowWindow(host_, SW_HIDE);
     visible_ = false;
     ensureCursorVisible();
+    lastAlive_ = GetTickCount64();
 }
 
 void MagnificationEngine::setViewport(lz::Point sourceTopLeft, double zoom) {
     if (!mag_ || !api_.setWindowTransform) return;
+    lastAlive_ = GetTickCount64();
     const float scale = static_cast<float>(zoom);
     const float x = static_cast<float>(sourceTopLeft.x);
     const float y = static_cast<float>(sourceTopLeft.y);
@@ -252,30 +263,60 @@ void MagnificationEngine::refreshExcludedWindows() {
     }
 }
 
+void MagnificationEngine::blankSystemCursors() {
+    // A transparent 32x32 cursor. Each id needs a fresh cursor because SetSystemCursor
+    // destroys the handle it is given.
+    constexpr DWORD ids[] = {
+        32512, 32513, 32514, 32515, 32516, 32642, 32643,
+        32644, 32645, 32646, 32648, 32649, 32650, 32651,
+    };
+    bool any = false;
+    BYTE andMask[32 * 32 / 8];
+    BYTE xorMask[32 * 32 / 8];
+    std::memset(andMask, 0xFF, sizeof(andMask));
+    std::memset(xorMask, 0, sizeof(xorMask));
+    for (const DWORD id : ids) {
+        HCURSOR cursor = CreateCursor(GetModuleHandleW(nullptr), 0, 0, 32, 32, andMask,
+                                      xorMask);
+        if (!cursor) continue;
+        if (SetSystemCursor(cursor, id)) {
+            any = true;
+        } else {
+            DestroyCursor(cursor);
+        }
+    }
+    std::printf("[livezoom] system cursors blanked=%d\n", any ? 1 : 0);
+}
+
 void MagnificationEngine::hideHardwareCursor(bool hide) {
-    if (!api_.showSystemCursor) return;
     if (!hide) {
         ensureCursorVisible();
         return;
     }
-    if (hardwareCursorHidden_) return;
-    api_.showSystemCursor(FALSE);
+    std::lock_guard lock(cursorMutex_);
+    if (hardwareCursorHidden_ && cursorBlanked_) return;
+    if (api_.showSystemCursor) api_.showSystemCursor(FALSE);
+    blankSystemCursors();
     hardwareCursorHidden_ = true;
+    cursorBlanked_ = true;
+    lastAlive_ = GetTickCount64();
     std::printf("[livezoom] hardware cursor hidden\n");
 }
 
 void MagnificationEngine::ensureCursorVisible() {
-    if (!api_.showSystemCursor) return;
+    std::lock_guard lock(cursorMutex_);
     const bool wasHidden = hardwareCursorHidden_;
-    api_.showSystemCursor(TRUE);
+    const bool wasBlanked = cursorBlanked_;
+    if (api_.showSystemCursor) api_.showSystemCursor(TRUE);
     hardwareCursorHidden_ = false;
+    cursorBlanked_ = false;
 
-    // A cursor hidden by the magnifier can stay hidden on some drivers even after
-    // MagShowSystemCursor(TRUE). Reloading the current cursor scheme is the same recovery
-    // path as switching to the secure desktop, without forcing the user to press Ctrl+Alt+Del.
-    if (wasHidden) {
+    // Reloading the current cursor scheme restores the real cursor bitmaps after
+    // SetSystemCursor replaced them with blank ones, and recovers drivers that keep the
+    // magnifier's hide state.
+    if (wasHidden || wasBlanked) {
         SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, SPIF_SENDCHANGE);
-        api_.showSystemCursor(TRUE);
+        if (api_.showSystemCursor) api_.showSystemCursor(TRUE);
     }
 
     CURSORINFO info{};
@@ -286,8 +327,18 @@ void MagnificationEngine::ensureCursorVisible() {
         POINT cursor{};
         if (GetCursorPos(&cursor)) SetCursorPos(cursor.x, cursor.y);
     }
-    std::printf("[livezoom] cursor restore: wasHidden=%d showing=%d\n", wasHidden ? 1 : 0,
-                showing ? 1 : 0);
+    std::printf("[livezoom] cursor restore: wasHidden=%d wasBlanked=%d showing=%d\n",
+                wasHidden ? 1 : 0, wasBlanked ? 1 : 0, showing ? 1 : 0);
+}
+
+void MagnificationEngine::cursorWatchdogLoop() {
+    while (!watchStop_) {
+        Sleep(250);
+        if (!cursorBlanked_) continue;
+        if (GetTickCount64() - lastAlive_ <= 2000) continue;
+        std::printf("[livezoom] cursor watchdog: restoring the pointer\n");
+        ensureCursorVisible();
+    }
 }
 
 LRESULT CALLBACK MagnificationEngine::hostProc(HWND hwnd, UINT message, WPARAM wParam,

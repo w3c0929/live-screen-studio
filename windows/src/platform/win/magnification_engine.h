@@ -3,8 +3,11 @@
 #include <windows.h>
 #include <magnification.h>
 
+#include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "geometry.h"
@@ -59,6 +62,8 @@ private:
     void destroyHost();
     void showHost();
     void hideHardwareCursor(bool hide);
+    void blankSystemCursors();
+    void cursorWatchdogLoop();
     void registerHostClass();
 
     Api api_;
@@ -71,6 +76,11 @@ private:
     bool excludeObs_ = true;
     HWND overlay_ = nullptr;
     bool hardwareCursorHidden_ = false;
+    std::atomic<bool> cursorBlanked_{false};
+    std::mutex cursorMutex_;
+    std::thread cursorWatchdog_;
+    std::atomic<bool> watchStop_{false};
+    std::atomic<uint64_t> lastAlive_{0};
     std::vector<HWND> excluded_;
     bool classRegistered_ = false;
 };

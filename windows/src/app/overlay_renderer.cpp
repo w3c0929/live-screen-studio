@@ -197,6 +197,7 @@ void OverlayRenderer::destroyDevice() {
     roundStyle_.Reset();
     buttStyle_.Reset();
     dashStyle_.Reset();
+    cursorPath_.Reset();
     d2dContext_.Reset();
     d2dDevice_.Reset();
     d2dFactory_.Reset();
@@ -315,6 +316,49 @@ void OverlayRenderer::addHighlight(HighlightKind kind, lz::Rect line) {
 void OverlayRenderer::addClick(lz::Point screenLocal, double now) {
     if (!visible_) return;
     clicks_.push_back({screenLocal, now, clickEffect_, clickColor_});
+}
+
+void OverlayRenderer::setCursor(lz::Point position, double scale, bool visible) {
+    cursorPosition_ = position;
+    cursorScale_ = scale;
+    cursorVisible_ = visible;
+}
+
+bool OverlayRenderer::buildCursorPath() {
+    if (cursorPath_) return true;
+    if (!d2dFactory_) return false;
+    ComPtr<ID2D1PathGeometry> path;
+    if (FAILED(d2dFactory_->CreatePathGeometry(&path))) return false;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(path->Open(&sink))) return false;
+    const auto p = [](float x, float y) { return D2D1::Point2F(x, y); };
+    sink->BeginFigure(p(0, 0), D2D1_FIGURE_BEGIN_FILLED);
+    sink->AddLine(p(0, 16.5f));
+    sink->AddLine(p(3.9f, 12.8f));
+    sink->AddLine(p(6.6f, 19.0f));
+    sink->AddLine(p(9.3f, 17.8f));
+    sink->AddLine(p(6.7f, 11.8f));
+    sink->AddLine(p(11.8f, 11.8f));
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    sink->Close();
+    cursorPath_ = path;
+    return true;
+}
+
+void OverlayRenderer::drawCursor() {
+    if (!cursorVisible_ || !d2dContext_ || !buildCursorPath()) return;
+    const float scale = static_cast<float>(cursorScale_);
+    if (scale <= 0) return;
+    d2dContext_->SetTransform(D2D1::Matrix3x2F(
+        scale, 0, 0, scale, static_cast<float>(cursorPosition_.x),
+        static_cast<float>(cursorPosition_.y)));
+    setBrush({0, 0, 0, 0.35f});
+    d2dContext_->DrawGeometry(cursorPath_.Get(), brush_.Get(), 3.2f, roundStyle_.Get());
+    setBrush({0.07f, 0.07f, 0.08f, 1.0f});
+    d2dContext_->FillGeometry(cursorPath_.Get(), brush_.Get());
+    setBrush({1, 1, 1, 1.0f});
+    d2dContext_->DrawGeometry(cursorPath_.Get(), brush_.Get(), 1.2f, roundStyle_.Get());
+    d2dContext_->SetTransform(D2D1::Matrix3x2F::Identity());
 }
 
 void OverlayRenderer::setBrush(const lz::Rgba& color, float alphaScale) {
@@ -560,6 +604,7 @@ void OverlayRenderer::render(double now) {
 
     d2dContext_->SetTransform(D2D1::Matrix3x2F::Identity());
     drawClicks(now);
+    drawCursor();
 
     const HRESULT hr = d2dContext_->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
