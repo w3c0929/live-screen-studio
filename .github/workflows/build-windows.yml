@@ -35,24 +35,14 @@ jobs:
       - name: Test
         run: ctest --test-dir windows/build-release --output-on-failure
 
-      - name: Publish OCR helper
-        shell: pwsh
-        run: |
-          dotnet publish windows/poc/ocr_poc/ocr_poc.csproj -c Release -r win-x64 `
-            --self-contained true -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false `
-            -p:DebugType=None -p:DebugSymbols=false -o windows/dist/ocr
-
       - name: Package portable zip
         shell: pwsh
         run: |
           $stage = "windows/dist/package"
           Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force (Join-Path $stage "ocr") | Out-Null
+          New-Item -ItemType Directory -Force $stage | Out-Null
           Copy-Item windows/build-release/src/app/livezoom_win.exe $stage
           Copy-Item windows/README.md $stage
-          Copy-Item windows/dist/ocr/ocr_poc.exe (Join-Path $stage "ocr")
           Compress-Archive -Path (Join-Path $stage "*") `
             -DestinationPath windows/dist/LiveZoom-windows-x64-portable.zip -Force
 

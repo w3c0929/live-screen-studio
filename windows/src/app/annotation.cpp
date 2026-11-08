@@ -12,16 +12,6 @@ Annotation Annotation::stroke(Point start, InkLook look, double zoom) {
     return annotation;
 }
 
-Annotation Annotation::highlight(HighlightKind kind, Rect line, InkLook look, double zoom) {
-    Annotation annotation;
-    annotation.look = look;
-    annotation.unit = 1.0 / zoom;
-    annotation.kind = kind;
-    annotation.line = line;
-    annotation.spotlight = kind == HighlightKind::Spotlight;
-    return annotation;
-}
-
 void Annotation::extend(Point point, bool straight) {
     if (straight) {
         if (points.empty()) {

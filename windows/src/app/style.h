@@ -17,13 +17,6 @@ enum class InkStyle {
     Dashed,
 };
 
-enum class HighlightKind {
-    Box,
-    Underline,
-    Fill,
-    Spotlight,
-};
-
 struct InkLook {
     InkStyle style = InkStyle::Marker;
     Rgba color{1.0f, 0.23f, 0.19f, 1.0f};

@@ -9,7 +9,6 @@
 #include <shellapi.h>
 
 #include <algorithm>
-#include <array>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -18,7 +17,6 @@
 
 #include "input_hook.h"
 #include "magnification_engine.h"
-#include "ocr_service.h"
 #include "settings.h"
 #include "settings_ui.h"
 #include "tray.h"
@@ -33,20 +31,14 @@ constexpr UINT_PTR kExitTimer = 2;
 HWND g_window = nullptr;
 std::unique_ptr<MagnificationEngine> g_engine;
 std::unique_ptr<InputHook> g_input;
-std::unique_ptr<OcrService> g_ocr;
 std::unique_ptr<ZoomController> g_controller;
 std::unique_ptr<Tray> g_tray;
 lz::Settings g_settings;
 
 void applyHotkeys() {
     if (!g_input) return;
-    std::array<HotkeyBinding, 4> bindings{{
-        {g_settings.highlightBox.vk, g_settings.highlightBox.mods},
-        {g_settings.highlightUnderline.vk, g_settings.highlightUnderline.mods},
-        {g_settings.highlightFill.vk, g_settings.highlightFill.mods},
-        {g_settings.highlightSpotlight.vk, g_settings.highlightSpotlight.mods},
-    }};
-    g_input->setHighlightHotkeys(bindings);
+    g_input->setSpotlightHotkey(
+        {g_settings.highlightSpotlight.vk, g_settings.highlightSpotlight.mods});
 }
 
 void showTrayMenu(HWND window) {
@@ -126,17 +118,9 @@ LRESULT CALLBACK mainProc(HWND window, UINT message, WPARAM wParam, LPARAM lPara
         case kLiveZoomStrokeCancel:
             g_controller->cancelStroke();
             return 0;
-        case kLiveZoomHighlight:
-            g_controller->highlight(static_cast<int>(wParam));
+        case kLiveZoomSpotlight:
+            g_controller->toggleSpotlight();
             return 0;
-        case kLiveZoomOcrResult: {
-            auto* result = reinterpret_cast<OcrResultMessage*>(lParam);
-            if (result) {
-                if (result->callback) result->callback(std::move(result->lines));
-                delete result;
-            }
-            return 0;
-        }
         case kLiveZoomUndo:
             g_controller->undoStroke();
             return 0;
@@ -197,19 +181,6 @@ void redirectLogsToFile() {
     if (_wfreopen(path.c_str(), L"a", stderr)) {
         setvbuf(stderr, nullptr, _IONBF, 0);
     }
-}
-
-std::wstring findOcrHelper() {
-    wchar_t exePath[MAX_PATH]{};
-    const DWORD length = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-    std::wstring directory = length ? std::wstring(exePath, length) : std::wstring(L".");
-    const size_t slash = directory.find_last_of(L"\\/");
-    if (slash != std::wstring::npos) directory.resize(slash);
-    const std::wstring nested = directory + L"\\ocr\\ocr_poc.exe";
-    if (GetFileAttributesW(nested.c_str()) != INVALID_FILE_ATTRIBUTES) return nested;
-    const std::wstring flat = directory + L"\\ocr_poc.exe";
-    if (GetFileAttributesW(flat.c_str()) != INVALID_FILE_ATTRIBUTES) return flat;
-    return nested;
 }
 
 std::string utf8FromWide(const wchar_t* text) {
@@ -286,9 +257,7 @@ int run(int argc, char** argv) {
     }
 
     g_input = std::make_unique<InputHook>();
-    g_ocr = std::make_unique<OcrService>(g_window, findOcrHelper());
-    g_controller =
-        std::make_unique<ZoomController>(*g_engine, *g_input, *g_ocr, g_settings);
+    g_controller = std::make_unique<ZoomController>(*g_engine, *g_input, g_settings);
     if (!g_input->start(g_window)) {
         MessageBoxW(nullptr, L"无法安装全局输入钩子。\n请检查安全软件是否拦截了 LiveZoom。",
                     L"LiveZoom", MB_OK | MB_ICONERROR);
@@ -326,7 +295,6 @@ int run(int argc, char** argv) {
     KillTimer(g_window, kFrameTimer);
     KillTimer(g_window, kExitTimer);
     if (g_controller) g_controller->reset();
-    if (g_ocr) g_ocr->shutdown();
     if (g_input) g_input->stop();
     if (g_tray) g_tray->remove();
     if (g_engine) g_engine->shutdown();

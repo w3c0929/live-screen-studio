@@ -2,7 +2,6 @@
 
 #include <windows.h>
 
-#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -21,7 +20,7 @@ inline constexpr UINT kLiveZoomUndo = WM_APP + 8;
 inline constexpr UINT kLiveZoomClear = WM_APP + 9;
 inline constexpr UINT kLiveZoomClick = WM_APP + 10;
 inline constexpr UINT kLiveZoomStrokeCancel = WM_APP + 11;
-inline constexpr UINT kLiveZoomHighlight = WM_APP + 13;
+inline constexpr UINT kLiveZoomSpotlight = WM_APP + 13;
 inline constexpr UINT kLiveZoomTray = WM_APP + 100;
 
 struct HotkeyBinding {
@@ -58,7 +57,7 @@ public:
     void setHasStrokes(bool has) { hasStrokes_ = has; }
     /// Test/demo hook: accept SendInput/mouse_event events too.
     void setAcceptInjected(bool accept) { acceptInjected_ = accept; }
-    void setHighlightHotkeys(const std::array<HotkeyBinding, 4>& hotkeys);
+    void setSpotlightHotkey(HotkeyBinding hotkey);
     void setCursorBounds(std::optional<lz::Rect> bounds);
 
     [[nodiscard]] bool running() const { return installed_; }
@@ -102,10 +101,9 @@ private:
     int moveCount_ = 0;
     bool ctrlAtDown_ = false;
     bool swallowRightUp_ = false;
-    bool highlightHeld_[4] = {false, false, false, false};
-    UINT highlightHeldVk_[4] = {0, 0, 0, 0};
-    std::array<HotkeyBinding, 4> highlightHotkeys_{
-        {{0x31, 5}, {0x32, 5}, {0x33, 5}, {0x34, 5}}};
+    bool spotlightHeld_ = false;
+    UINT spotlightHeldVk_ = 0;
+    HotkeyBinding spotlightHotkey_{0x34, 5};
     std::mutex hotkeyMutex_;
     HHOOK mouseHook_ = nullptr;
     HHOOK keyboardHook_ = nullptr;

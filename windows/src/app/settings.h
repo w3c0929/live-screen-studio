@@ -54,18 +54,13 @@ struct Settings {
     bool smoothImage = false;
     bool excludeObs = true;
     bool drawWhileZoomed = true;
-    bool blankSystemCursor = false;
 
-    Hotkey highlightBox{0x31, 5};        // Ctrl+Shift+1
-    Hotkey highlightUnderline{0x32, 5};  // Ctrl+Shift+2
-    Hotkey highlightFill{0x33, 5};       // Ctrl+Shift+3
     Hotkey highlightSpotlight{0x34, 5};  // Ctrl+Shift+4
 
     double cursorSize = 1.2;
     CursorStyle cursorStyle = CursorStyle::Classic;
     bool smoothCursor = false;
     bool hideIdleCursor = false;
-    bool customCursorAlways = false;
     double idleDelay = 3.0;
 
     InkStyle inkStyle = InkStyle::Marker;

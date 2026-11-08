@@ -84,9 +84,6 @@ bool MagnificationEngine::initialize(std::string& error) {
     }
     initialized_ = true;
     registerHostClass();
-    lastAlive_ = GetTickCount64();
-    watchStop_ = false;
-    cursorWatchdog_ = std::thread(&MagnificationEngine::cursorWatchdogLoop, this);
     return true;
 }
 
@@ -97,8 +94,6 @@ void MagnificationEngine::shutdown() {
         hideHardwareCursor(false);
         destroyHost();
     }
-    watchStop_ = true;
-    if (cursorWatchdog_.joinable()) cursorWatchdog_.join();
     if (initialized_ && api_.uninitialize) {
         api_.uninitialize();
     }
@@ -187,8 +182,6 @@ bool MagnificationEngine::showForMonitor(HMONITOR monitor) {
         showHost();
         return true;
     }
-    // Only restore the system cursor if the magnifier was actually visible. When the idle
-    // custom cursor owns the pointer, the host is created while the cursor is already hidden.
     if (visible_) hide();
     destroyHost();
     if (!createHost(monitor)) return false;
@@ -206,7 +199,6 @@ void MagnificationEngine::showHost() {
     UpdateWindow(host_);
     refreshExcludedWindows();
     hideHardwareCursor(true);
-    lastAlive_ = GetTickCount64();
     visible_ = true;
 }
 
@@ -216,12 +208,10 @@ void MagnificationEngine::hide() {
     if (host_) ShowWindow(host_, SW_HIDE);
     visible_ = false;
     ensureCursorVisible();
-    lastAlive_ = GetTickCount64();
 }
 
 void MagnificationEngine::setViewport(lz::Point sourceTopLeft, double zoom) {
     if (!mag_ || !api_.setWindowTransform) return;
-    lastAlive_ = GetTickCount64();
     const float scale = static_cast<float>(zoom);
     const float x = static_cast<float>(sourceTopLeft.x);
     const float y = static_cast<float>(sourceTopLeft.y);
@@ -275,23 +265,19 @@ void MagnificationEngine::refreshExcludedWindows() {
     }
 }
 
-void MagnificationEngine::blankSystemCursors(bool arrowOnly) {
+void MagnificationEngine::blankSystemCursors() {
     // A transparent 32x32 cursor. Each id needs a fresh cursor because SetSystemCursor
-    // destroys the handle it is given. Idle mode replaces only OCR_NORMAL so text, resize
-    // and hand cursors keep their native look and meaning.
+    // destroys the handle it is given.
     constexpr DWORD ids[] = {
         32512, 32513, 32514, 32515, 32516, 32642, 32643,
         32644, 32645, 32646, 32648, 32649, 32650, 32651,
     };
-    constexpr DWORD arrowId = 32512;
     bool any = false;
     BYTE andMask[32 * 32 / 8];
     BYTE xorMask[32 * 32 / 8];
     std::memset(andMask, 0xFF, sizeof(andMask));
     std::memset(xorMask, 0, sizeof(xorMask));
-    const size_t count = arrowOnly ? 1 : std::size(ids);
-    for (size_t i = 0; i < count; ++i) {
-        const DWORD id = arrowOnly ? arrowId : ids[i];
+    for (const DWORD id : ids) {
         HCURSOR cursor = CreateCursor(GetModuleHandleW(nullptr), 0, 0, 32, 32, andMask,
                                       xorMask);
         if (!cursor) continue;
@@ -301,43 +287,32 @@ void MagnificationEngine::blankSystemCursors(bool arrowOnly) {
             DestroyCursor(cursor);
         }
     }
-    std::printf("[livezoom] system cursors blanked=%d arrowOnly=%d\n", any ? 1 : 0,
-                arrowOnly ? 1 : 0);
+    std::printf("[livezoom] system cursors blanked=%d\n", any ? 1 : 0);
 }
 
-void MagnificationEngine::hideHardwareCursor(bool hide, bool arrowOnly) {
+void MagnificationEngine::hideHardwareCursor(bool hide) {
     if (!hide) {
         ensureCursorVisible();
         return;
     }
     std::lock_guard lock(cursorMutex_);
-    if (arrowOnly) {
-        if (cursorBlanked_) return;
-    } else if (hardwareCursorHidden_ && cursorBlanked_ && cursorBlankedAll_) {
-        return;
-    }
+    if (hardwareCursorHidden_) return;
     if (api_.showSystemCursor) api_.showSystemCursor(FALSE);
-    blankSystemCursors(arrowOnly);
+    blankSystemCursors();
     hardwareCursorHidden_ = true;
-    cursorBlanked_ = true;
-    if (!arrowOnly) cursorBlankedAll_ = true;
-    lastAlive_ = GetTickCount64();
-    std::printf("[livezoom] hardware cursor hidden arrowOnly=%d\n", arrowOnly ? 1 : 0);
+    std::printf("[livezoom] hardware cursor hidden\n");
 }
 
 void MagnificationEngine::ensureCursorVisible() {
     std::lock_guard lock(cursorMutex_);
     const bool wasHidden = hardwareCursorHidden_;
-    const bool wasBlanked = cursorBlanked_;
     if (api_.showSystemCursor) api_.showSystemCursor(TRUE);
     hardwareCursorHidden_ = false;
-    cursorBlanked_ = false;
-    cursorBlankedAll_ = false;
 
     // Reloading the current cursor scheme restores the real cursor bitmaps after
     // SetSystemCursor replaced them with blank ones, and recovers drivers that keep the
     // magnifier's hide state.
-    if (wasHidden || wasBlanked) {
+    if (wasHidden) {
         SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, SPIF_SENDCHANGE);
         if (api_.showSystemCursor) api_.showSystemCursor(TRUE);
     }
@@ -350,19 +325,8 @@ void MagnificationEngine::ensureCursorVisible() {
         POINT cursor{};
         if (GetCursorPos(&cursor)) SetCursorPos(cursor.x, cursor.y);
     }
-    std::printf("[livezoom] cursor restore: wasHidden=%d wasBlanked=%d showing=%d\n",
-                wasHidden ? 1 : 0, wasBlanked ? 1 : 0, showing ? 1 : 0);
-}
-
-void MagnificationEngine::cursorWatchdogLoop() {
-    while (!watchStop_) {
-        Sleep(250);
-        if (!cursorBlanked_) continue;
-        if (GetTickCount64() - lastAlive_ <= 2000) continue;
-        std::printf("[livezoom] cursor watchdog: restoring the pointer\n");
-        ensureCursorVisible();
-        watchdogRestored_ = true;
-    }
+    std::printf("[livezoom] cursor restore: wasHidden=%d showing=%d\n",
+                wasHidden ? 1 : 0, showing ? 1 : 0);
 }
 
 LRESULT CALLBACK MagnificationEngine::hostProc(HWND hwnd, UINT message, WPARAM wParam,

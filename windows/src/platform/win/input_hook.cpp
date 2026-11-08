@@ -83,9 +83,9 @@ void InputHook::setDrawingArmed(bool armed) {
     drawingArmed_ = armed;
 }
 
-void InputHook::setHighlightHotkeys(const std::array<HotkeyBinding, 4>& hotkeys) {
+void InputHook::setSpotlightHotkey(HotkeyBinding hotkey) {
     std::lock_guard lock(hotkeyMutex_);
-    highlightHotkeys_ = hotkeys;
+    spotlightHotkey_ = hotkey;
 }
 
 void InputHook::threadMain() {
@@ -311,10 +311,8 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
         if ((!(keyboard->flags & LLKHF_INJECTED) || self->acceptInjected_) &&
             keyboard->dwExtraInfo != kSyntheticMarker) {
             if (!self->zoomActive_) {
-                for (int i = 0; i < 4; ++i) {
-                    self->highlightHeld_[i] = false;
-                    self->highlightHeldVk_[i] = 0;
-                }
+                self->spotlightHeld_ = false;
+                self->spotlightHeldVk_ = 0;
             } else if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
                 if (keyboard->vkCode == VK_ESCAPE && self->hasStrokes_) {
                     PostMessageW(self->target_, kLiveZoomClear, 0, 0);
@@ -327,32 +325,25 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
                     (((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000)
                          ? 8u
                          : 0u);
-                std::array<HotkeyBinding, 4> bindings;
+                HotkeyBinding binding;
                 {
                     std::lock_guard lock(self->hotkeyMutex_);
-                    bindings = self->highlightHotkeys_;
+                    binding = self->spotlightHotkey_;
                 }
-                for (int i = 0; i < 4; ++i) {
-                    if (bindings[i].vk == 0 || bindings[i].vk != keyboard->vkCode ||
-                        bindings[i].mods != mods) {
-                        continue;
-                    }
-                    if (!self->highlightHeld_[i]) {
-                        self->highlightHeld_[i] = true;
-                        self->highlightHeldVk_[i] = keyboard->vkCode;
-                        PostMessageW(self->target_, kLiveZoomHighlight,
-                                     static_cast<WPARAM>(i), 0);
+                if (binding.vk != 0 && binding.vk == keyboard->vkCode &&
+                    binding.mods == mods) {
+                    if (!self->spotlightHeld_) {
+                        self->spotlightHeld_ = true;
+                        self->spotlightHeldVk_ = keyboard->vkCode;
+                        PostMessageW(self->target_, kLiveZoomSpotlight, 0, 0);
                     }
                     return 1;
                 }
             } else if (message == WM_KEYUP || message == WM_SYSKEYUP) {
-                for (int i = 0; i < 4; ++i) {
-                    if (self->highlightHeld_[i] &&
-                        self->highlightHeldVk_[i] == keyboard->vkCode) {
-                        self->highlightHeld_[i] = false;
-                        self->highlightHeldVk_[i] = 0;
-                        return 1;
-                    }
+                if (self->spotlightHeld_ && self->spotlightHeldVk_ == keyboard->vkCode) {
+                    self->spotlightHeld_ = false;
+                    self->spotlightHeldVk_ = 0;
+                    return 1;
                 }
             }
         }

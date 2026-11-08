@@ -199,12 +199,10 @@ bool Settings::load() {
     smoothImage = readBool(file, L"smoothImage", smoothImage);
     excludeObs = readBool(file, L"excludeObs", excludeObs);
     drawWhileZoomed = readBool(file, L"drawWhileZoomed", drawWhileZoomed);
-    blankSystemCursor = readBool(file, L"blankSystemCursor", blankSystemCursor);
     cursorSize = std::clamp(readDouble(file, L"cursorSize", cursorSize), 0.5, 3.0);
     cursorStyle = cursorStyleFromName(readString(file, L"cursorStyle", L"classic"));
     smoothCursor = readBool(file, L"smoothCursor", smoothCursor);
     hideIdleCursor = readBool(file, L"hideIdleCursor", hideIdleCursor);
-    customCursorAlways = readBool(file, L"customCursorAlways", customCursorAlways);
     idleDelay = std::clamp(readDouble(file, L"idleDelay", idleDelay), 1.0, 10.0);
 
     const std::wstring followName = readString(file, L"follow", L"calm");
@@ -231,9 +229,6 @@ bool Settings::load() {
         }
         return fallback;
     };
-    highlightBox = readHotkey(L"highlightBox", highlightBox);
-    highlightUnderline = readHotkey(L"highlightUnderline", highlightUnderline);
-    highlightFill = readHotkey(L"highlightFill", highlightFill);
     highlightSpotlight = readHotkey(L"highlightSpotlight", highlightSpotlight);
 
     inkStyle = inkStyleFromName(readString(file, L"inkStyle", L"marker"));
@@ -253,12 +248,10 @@ bool Settings::save() const {
     writeString(file, L"smoothImage", smoothImage ? L"1" : L"0");
     writeString(file, L"excludeObs", excludeObs ? L"1" : L"0");
     writeString(file, L"drawWhileZoomed", drawWhileZoomed ? L"1" : L"0");
-    writeString(file, L"blankSystemCursor", blankSystemCursor ? L"1" : L"0");
     writeString(file, L"cursorSize", std::to_wstring(cursorSize));
     writeString(file, L"cursorStyle", cursorStyleName(cursorStyle));
     writeString(file, L"smoothCursor", smoothCursor ? L"1" : L"0");
     writeString(file, L"hideIdleCursor", hideIdleCursor ? L"1" : L"0");
-    writeString(file, L"customCursorAlways", customCursorAlways ? L"1" : L"0");
     writeString(file, L"idleDelay", std::to_wstring(idleDelay));
     const wchar_t* followName = L"calm";
     if (follow == FollowStyle::Standard) followName = L"standard";
@@ -271,9 +264,6 @@ bool Settings::save() const {
         writeString(file, key,
                     std::to_wstring(hotkey.vk) + L":" + std::to_wstring(hotkey.mods));
     };
-    writeHotkey(L"highlightBox", highlightBox);
-    writeHotkey(L"highlightUnderline", highlightUnderline);
-    writeHotkey(L"highlightFill", highlightFill);
     writeHotkey(L"highlightSpotlight", highlightSpotlight);
     writeString(file, L"inkStyle", inkStyleName(inkStyle));
     writeString(file, L"inkColor", inkColorName(inkColor));

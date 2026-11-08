@@ -2,68 +2,24 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <cstdio>
-#include <cstring>
 
 #include "input_hook.h"
 #include "magnification_engine.h"
-#include "ocr_service.h"
 #include "overlay_renderer.h"
 #include "style.h"
 
-ZoomController::ZoomController(MagnificationEngine& engine, InputHook& input, OcrService& ocr,
+ZoomController::ZoomController(MagnificationEngine& engine, InputHook& input,
                                lz::Settings& settings)
     : engine_(engine),
       input_(input),
-      ocr_(ocr),
       settings_(settings),
-      overlay_(std::make_unique<OverlayRenderer>()),
-      idleOverlay_(std::make_unique<OverlayRenderer>()) {
+      overlay_(std::make_unique<OverlayRenderer>()) {
     QueryPerformanceFrequency(&frequency_);
     QueryPerformanceCounter(&start_);
 }
 
 ZoomController::~ZoomController() = default;
-
-namespace {
-
-/// True when the current cursor is the transparent arrow we installed for the idle custom
-/// cursor. Text, resize, hand and app-defined cursors have visible pixels and are left alone.
-bool isBlankCursor(HCURSOR cursor) {
-    if (!cursor) return false;
-    const HDC screen = GetDC(nullptr);
-    const HDC memory = CreateCompatibleDC(screen);
-    BITMAPINFO info{};
-    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    info.bmiHeader.biWidth = 64;
-    info.bmiHeader.biHeight = 64;
-    info.bmiHeader.biPlanes = 1;
-    info.bmiHeader.biBitCount = 32;
-    info.bmiHeader.biCompression = BI_RGB;
-    void* bits = nullptr;
-    const HBITMAP bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (!bitmap) {
-        DeleteDC(memory);
-        ReleaseDC(nullptr, screen);
-        return false;
-    }
-    const HGDIOBJ old = SelectObject(memory, bitmap);
-    std::memset(bits, 0, 64 * 64 * 4);
-    DrawIconEx(memory, 0, 0, cursor, 0, 0, 0, nullptr, DI_NORMAL);
-    bool blank = true;
-    const auto* pixels = static_cast<const uint32_t*>(bits);
-    for (int i = 0; i < 64 * 64 && blank; ++i) {
-        if (pixels[i] != 0) blank = false;
-    }
-    SelectObject(memory, old);
-    DeleteObject(bitmap);
-    DeleteDC(memory);
-    ReleaseDC(nullptr, screen);
-    return blank;
-}
-
-}  // namespace
 
 double ZoomController::nowSeconds() const {
     LARGE_INTEGER value{};
@@ -92,8 +48,6 @@ lz::Point ZoomController::contentPoint(int x, int y) const {
 }
 
 void ZoomController::startZoom() {
-    ++session_;
-    hideIdleCursor(false);
     POINT cursor{};
     GetCursorPos(&cursor);
     const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
@@ -156,7 +110,6 @@ void ZoomController::startZoom() {
 
 void ZoomController::finish() {
     if (!active_) return;
-    ++session_;
     active_ = false;
     if (overlay_) {
         overlay_->clear();
@@ -164,7 +117,6 @@ void ZoomController::finish() {
     }
     engine_.setOverlayWindow(nullptr);
     engine_.hide();
-    idleHardwareHidden_ = false;
     // Some drivers apply the magnifier's cursor hide asynchronously. Retry after the zoom-out
     // animation so the pointer is back without requiring Ctrl+Alt+Del.
     cursorRestoreAt_ = nowSeconds() + 0.15;
@@ -176,121 +128,10 @@ void ZoomController::finish() {
     input_.setCursorBounds(std::nullopt);
     camera_.reset();
     std::printf("[livezoom] zoom off\n");
-    if (settings_.enabled && settings_.customCursorAlways) {
-        updateIdleCursor(nowSeconds());
-    }
 }
 
 void ZoomController::reset() {
     finish();
-    hideIdleCursor(true);
-}
-
-void ZoomController::hideIdleCursor(bool restoreHardware) {
-    if (idleOverlay_ && idleOverlay_->visible()) idleOverlay_->hide();
-    if (idleCursorActive_) {
-        std::printf("[livezoom] idle custom cursor off\n");
-    }
-    idleMonitor_ = nullptr;
-    idleMotion_.reset();
-    idleCursorActive_ = false;
-    idleLastCursor_ = nullptr;
-    idleCursorIsBlank_ = false;
-    lastIdleRender_ = 0;
-    if (restoreHardware && idleHardwareHidden_) {
-        engine_.restoreSystemCursor();
-        idleHardwareHidden_ = false;
-    }
-}
-
-void ZoomController::updateIdleCursor(double now) {
-    if (!settings_.enabled || !settings_.customCursorAlways) {
-        hideIdleCursor(true);
-        return;
-    }
-    if (!idleOverlay_) return;
-
-    // The idle cursor owns the pointer; cancel the zoom-out cursor restore retries.
-    cursorRestoreAt_ = 0;
-    cursorRestoreTries_ = 0;
-
-    POINT cursor{};
-    GetCursorPos(&cursor);
-    const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
-    MONITORINFO info{};
-    info.cbSize = sizeof(info);
-    if (!GetMonitorInfoW(monitor, &info)) {
-        hideIdleCursor(true);
-        return;
-    }
-
-    if (idleMonitor_ != monitor || !idleOverlay_->visible()) {
-        idleOverlay_->hide();
-        idleMonitor_ = monitor;
-        idleMonitorRect_ = info.rcMonitor;
-        idleDisplay_ = {static_cast<lz::Real>(idleMonitorRect_.right - idleMonitorRect_.left),
-                        static_cast<lz::Real>(idleMonitorRect_.bottom - idleMonitorRect_.top)};
-        if (!idleOverlay_->showForMonitor(monitor)) {
-            idleMonitor_ = nullptr;
-            hideIdleCursor(true);
-            return;
-        }
-        idleOverlay_->setMapping({0, 0}, 1.0, idleDisplay_);
-        idleOverlay_->setCursorStyle(settings_.cursorStyle);
-        idleOverlay_->setInk(settings_.inkLook());
-        idleOverlay_->setClickEffect(settings_.clickEffect, settings_.clickRgba());
-        const lz::Point local{cursor.x - idleMonitorRect_.left,
-                              cursor.y - idleMonitorRect_.top};
-        idleMotion_.emplace(local, now);
-        idleMotion_->smoothTime = settings_.smoothCursor ? 0.06 : 0.0;
-        idleMotion_->idleDelay = settings_.hideIdleCursor
-                                     ? std::optional<double>(settings_.idleDelay)
-                                     : std::nullopt;
-        idleMotion_->jump(local, now);
-        lastIdleRender_ = 0;
-        idleCursorActive_ = true;
-        idleLastCursor_ = nullptr;
-        idleCursorIsBlank_ = false;
-        std::printf("[livezoom] idle custom cursor on\n");
-        if (!idleHardwareHidden_) {
-            engine_.hideSystemCursorArrowOnly();
-            idleHardwareHidden_ = true;
-        }
-    }
-
-    const lz::Point local{cursor.x - idleMonitorRect_.left,
-                          cursor.y - idleMonitorRect_.top};
-    double dt = lastIdleRender_ > 0 ? now - lastIdleRender_ : 1.0 / 60.0;
-    dt = std::clamp(dt, 1.0 / 240.0, 1.0 / 20.0);
-    const bool buttonsDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
-                             (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 ||
-                             (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
-    if (idleMotion_) idleMotion_->update(local, buttonsDown, now, dt);
-
-    CURSORINFO cursorInfo{};
-    cursorInfo.cbSize = sizeof(cursorInfo);
-    HCURSOR cursorHandle = nullptr;
-    if (GetCursorInfo(&cursorInfo)) cursorHandle = cursorInfo.hCursor;
-    if (cursorHandle != idleLastCursor_) {
-        idleLastCursor_ = cursorHandle;
-        idleCursorIsBlank_ = isBlankCursor(cursorHandle);
-        if (idleCursorIsBlank_ && idleMotion_) idleMotion_->jump(local, now);
-    }
-
-    // Only replace the normal arrow. Text, resize, hand and custom app cursors stay visible
-    // with their native image, so the user keeps the usual mouse cues.
-    const double opacity =
-        idleCursorIsBlank_ ? (idleMotion_ ? idleMotion_->opacity : 1.0) : 0.0;
-    idleOverlay_->setCursorStyle(settings_.cursorStyle);
-    idleOverlay_->setCursor(local, settings_.cursorSize, opacity);
-    idleOverlay_->render(now);
-    lastIdleRender_ = now;
-
-    engine_.touchCursorWatchdog();
-    if (engine_.consumeWatchdogRestore()) {
-        engine_.hideSystemCursorArrowOnly();
-        idleHardwareHidden_ = true;
-    }
 }
 
 void ZoomController::toggle() {
@@ -332,7 +173,6 @@ void ZoomController::tick() {
     }
 
     if (!active_ || !camera_) {
-        updateIdleCursor(now);
         return;
     }
 
@@ -455,75 +295,10 @@ void ZoomController::clearStrokes() {
     input_.setHasStrokes(false);
 }
 
-void ZoomController::highlight(int kindIndex) {
+void ZoomController::toggleSpotlight() {
     if (!active_ || !overlay_ || !overlay_->visible()) return;
-    if (kindIndex == 3) {
-        overlay_->toggleSpotlight();
-        input_.setHasStrokes(overlay_->hasContent());
-        return;
-    }
-    lz::HighlightKind kind = lz::HighlightKind::Box;
-    switch (kindIndex) {
-        case 0: kind = lz::HighlightKind::Box; break;
-        case 1: kind = lz::HighlightKind::Underline; break;
-        case 2: kind = lz::HighlightKind::Fill; break;
-        default: return;
-    }
-    if (!ocr_.available()) {
-        std::printf("[livezoom] OCR helper not found\n");
-        return;
-    }
-
-    POINT cursor{};
-    GetCursorPos(&cursor);
-    const lz::Rect viewport = shownViewport();
-    const double zoom = camera_ ? camera_->zoom() : 1.0;
-    const lz::Point cursorContent = contentPoint(cursor.x, cursor.y);
-    const lz::Point mapped{(cursorContent.x - viewport.x) * zoom,
-                           (cursorContent.y - viewport.y) * zoom};
-    const uint64_t session = session_;
-    std::printf("[livezoom] OCR highlight kind=%d at (%.0f,%.0f)\n", kindIndex, mapped.x,
-                mapped.y);
-
-    const RECT capture = monitorRect_;
-    ocr_.recognize(capture, [this, kind, viewport, zoom, mapped, session](
-                                std::vector<OcrLine> lines) {
-        if (session != session_ || !active_ || !overlay_ || !overlay_->visible()) return;
-        if (lines.empty()) {
-            std::printf("[livezoom] OCR returned no lines\n");
-            return;
-        }
-        const OcrLine* best = nullptr;
-        double bestScore = 0;
-        for (const OcrLine& line : lines) {
-            const lz::Rect& box = line.box;
-            if (mapped.y < box.minY() - box.height * 0.8 ||
-                mapped.y > box.maxY() + box.height * 0.8) {
-                continue;
-            }
-            const double vertical =
-                std::max({box.minY() - mapped.y, mapped.y - box.maxY(), 0.0});
-            const double gap =
-                std::max({box.minX() - mapped.x, mapped.x - box.maxX(), 0.0});
-            if (gap > box.height * 4) continue;
-            const double score = vertical * 1000 + gap;
-            if (!best || score < bestScore) {
-                best = &line;
-                bestScore = score;
-            }
-        }
-        if (!best) {
-            std::printf("[livezoom] OCR found no line at the cursor\n");
-            return;
-        }
-        const lz::Rect content{
-            viewport.x + best->box.x / zoom, viewport.y + best->box.y / zoom,
-            best->box.width / zoom, best->box.height / zoom};
-        overlay_->addHighlight(kind, content, zoom);
-        input_.setHasStrokes(overlay_->hasContent());
-        std::printf("[livezoom] highlighted line (%.0f,%.0f,%.0f,%.0f)\n", content.x,
-                    content.y, content.width, content.height);
-    });
+    overlay_->toggleSpotlight();
+    input_.setHasStrokes(overlay_->hasContent());
 }
 
 void ZoomController::reloadSettings() {
@@ -545,18 +320,6 @@ void ZoomController::reloadSettings() {
         cursorMotion_->idleDelay = settings_.hideIdleCursor
                                        ? std::optional<double>(settings_.idleDelay)
                                        : std::nullopt;
-    }
-    if (idleOverlay_ && idleOverlay_->visible()) {
-        idleOverlay_->setCursorStyle(settings_.cursorStyle);
-        idleOverlay_->setInk(settings_.inkLook());
-        idleOverlay_->setClickEffect(settings_.clickEffect, settings_.clickRgba());
-    }
-    if (!active_) {
-        if (!settings_.enabled || !settings_.customCursorAlways) {
-            hideIdleCursor(true);
-        } else {
-            updateIdleCursor(nowSeconds());
-        }
     }
     input_.setDrawingArmed(settings_.drawWhileZoomed && overlay_ && overlay_->visible());
 }

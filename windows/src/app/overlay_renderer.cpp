@@ -347,28 +347,6 @@ void OverlayRenderer::clear() {
     strokeInProgress_ = false;
 }
 
-void OverlayRenderer::addHighlight(HighlightKind kind, lz::Rect line) {
-    addHighlight(kind, line, mappingZoom_);
-}
-
-void OverlayRenderer::addHighlight(HighlightKind kind, lz::Rect line, double zoom) {
-    if (!visible_) return;
-    if (kind == HighlightKind::Spotlight) {
-        annotations_.erase(std::remove_if(annotations_.begin(), annotations_.end(),
-                                         [](const lz::Annotation& a) { return a.spotlight; }),
-                          annotations_.end());
-    }
-    annotations_.push_back(lz::Annotation::highlight(kind, line, ink_, zoom));
-}
-
-bool OverlayRenderer::removeSpotlight() {
-    const auto it = std::find_if(annotations_.begin(), annotations_.end(),
-                                 [](const lz::Annotation& a) { return a.spotlight; });
-    if (it == annotations_.end()) return false;
-    annotations_.erase(it);
-    return true;
-}
-
 void OverlayRenderer::toggleSpotlight() {
     spotlightActive_ = !spotlightActive_;
 }
@@ -504,18 +482,6 @@ ComPtr<ID2D1PathGeometry> OverlayRenderer::buildStrokePath(
     return path;
 }
 
-ComPtr<ID2D1RoundedRectangleGeometry> OverlayRenderer::roundedRect(const lz::Rect& rect,
-                                                                   double corner) const {
-    if (!d2dFactory_) return nullptr;
-    ComPtr<ID2D1RoundedRectangleGeometry> geometry;
-    const D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(
-        D2D1::RectF(static_cast<float>(rect.minX()), static_cast<float>(rect.minY()),
-                    static_cast<float>(rect.maxX()), static_cast<float>(rect.maxY())),
-        static_cast<float>(corner), static_cast<float>(corner));
-    if (FAILED(d2dFactory_->CreateRoundedRectangleGeometry(rounded, &geometry))) return nullptr;
-    return geometry;
-}
-
 void OverlayRenderer::drawStyledGeometry(ID2D1Geometry* geometry, const lz::InkLook& look,
                                          double width, lz::InkStyle style) {
     if (!geometry || !d2dContext_ || !brush_) return;
@@ -581,89 +547,11 @@ void OverlayRenderer::drawStroke(const lz::Annotation& annotation) {
     }
 }
 
-void OverlayRenderer::drawHighlight(const lz::Annotation& annotation) {
-    const double h = annotation.line.height;
-    const lz::Rect around = annotation.line.insetBy(-h * 0.35, -h * 0.12);
-    const double corner = std::min(around.height * 0.25, 8.0 * annotation.unit);
-    const lz::InkLook& look = annotation.look;
-    const lz::InkStyle lineStyle =
-        (look.style == lz::InkStyle::Neon || look.style == lz::InkStyle::Dashed)
-            ? look.style
-            : lz::InkStyle::Marker;
-    const double width = std::max(look.width * 0.45, 2.0) * annotation.unit;
-
-    switch (annotation.kind) {
-        case HighlightKind::Box: {
-            if (auto geometry = roundedRect(around, corner)) {
-                drawStyledGeometry(geometry.Get(), look, width, lineStyle);
-            }
-            break;
-        }
-        case HighlightKind::Underline: {
-            const double y = annotation.line.maxY() + h * 0.18;
-            ComPtr<ID2D1PathGeometry> path;
-            if (SUCCEEDED(d2dFactory_->CreatePathGeometry(&path))) {
-                ComPtr<ID2D1GeometrySink> sink;
-                if (SUCCEEDED(path->Open(&sink))) {
-                    sink->BeginFigure(
-                        D2D1::Point2F(static_cast<float>(annotation.line.minX()),
-                                      static_cast<float>(y)),
-                        D2D1_FIGURE_BEGIN_HOLLOW);
-                    sink->AddLine(
-                        D2D1::Point2F(static_cast<float>(annotation.line.maxX()),
-                                      static_cast<float>(y)));
-                    sink->EndFigure(D2D1_FIGURE_END_OPEN);
-                    sink->Close();
-                    drawStyledGeometry(path.Get(), look, width, lineStyle);
-                }
-            }
-            break;
-        }
-        case HighlightKind::Fill: {
-            const double y = annotation.line.midY();
-            setBrush(look.color, 0.35f);
-            d2dContext_->DrawLine(
-                D2D1::Point2F(static_cast<float>(annotation.line.minX() - h * 0.15),
-                              static_cast<float>(y)),
-                D2D1::Point2F(static_cast<float>(annotation.line.maxX() + h * 0.15),
-                              static_cast<float>(y)),
-                brush_.Get(), static_cast<float>(h * 1.25), buttStyle_.Get());
-            break;
-        }
-        case HighlightKind::Spotlight: {
-            const float left = static_cast<float>(std::max(0.0, around.minX()));
-            const float top = static_cast<float>(std::max(0.0, around.minY()));
-            const float right = static_cast<float>(std::min(display_.width, around.maxX()));
-            const float bottom = static_cast<float>(std::min(display_.height, around.maxY()));
-            const float w = static_cast<float>(display_.width);
-            const float hgt = static_cast<float>(display_.height);
-            setBrush({0, 0, 0, 0.55f});
-            d2dContext_->FillRectangle(D2D1::RectF(0, 0, w, top), brush_.Get());
-            d2dContext_->FillRectangle(D2D1::RectF(0, bottom, w, hgt), brush_.Get());
-            d2dContext_->FillRectangle(D2D1::RectF(0, top, left, bottom), brush_.Get());
-            d2dContext_->FillRectangle(D2D1::RectF(right, top, w, bottom), brush_.Get());
-            if (auto geometry = roundedRect(around, corner)) {
-                setBrush(look.color, 0.85f);
-                d2dContext_->DrawGeometry(geometry.Get(), brush_.Get(),
-                                          static_cast<float>(1.5 * annotation.unit),
-                                          roundStyle_.Get());
-            }
-            break;
-        }
-    }
-}
-
 void OverlayRenderer::drawAnnotation(const lz::Annotation& annotation) {
     // A left press starts a stroke immediately; while it is still a single point it is either a
     // click that will be cancelled, or the start of a line. Drawing it would flash a dot.
-    if (!annotation.spotlight && annotation.points.size() == 1) return;
-    if (annotation.spotlight) {
-        drawHighlight(annotation);
-    } else if (!annotation.points.empty()) {
-        drawStroke(annotation);
-    } else {
-        drawHighlight(annotation);
-    }
+    if (annotation.points.size() == 1) return;
+    drawStroke(annotation);
 }
 
 void OverlayRenderer::drawSpotlight() {

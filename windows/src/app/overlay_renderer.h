@@ -14,9 +14,7 @@
 #include "geometry.h"
 #include "style.h"
 
-using lz::HighlightKind;
-
-/// Transparent topmost DirectComposition window that carries ink, highlights and click effects.
+/// Transparent topmost DirectComposition window that carries ink, spotlight and click effects.
 class OverlayRenderer {
 public:
     OverlayRenderer() = default;
@@ -44,9 +42,6 @@ public:
         return !annotations_.empty() || spotlightActive_;
     }
 
-    void addHighlight(HighlightKind kind, lz::Rect line);
-    void addHighlight(HighlightKind kind, lz::Rect line, double zoom);
-    bool removeSpotlight();
     /// Cursor-centred spotlight: dims everything outside a soft circle.
     void toggleSpotlight();
     void setSpotlightCenter(lz::Point screenLocal, double radius);
@@ -76,11 +71,8 @@ private:
 
     Microsoft::WRL::ComPtr<ID2D1PathGeometry> buildStrokePath(
         const std::vector<lz::Point>& points) const;
-    Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> roundedRect(
-        const lz::Rect& rect, double corner) const;
     void drawAnnotation(const lz::Annotation& annotation);
     void drawStroke(const lz::Annotation& annotation);
-    void drawHighlight(const lz::Annotation& annotation);
     void drawStyledGeometry(ID2D1Geometry* geometry, const lz::InkLook& look, double width,
                             lz::InkStyle style);
     void drawSpotlight();

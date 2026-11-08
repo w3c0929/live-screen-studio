@@ -3,11 +3,9 @@
 #include <windows.h>
 #include <magnification.h>
 
-#include <atomic>
 #include <mutex>
 #include <optional>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "geometry.h"
@@ -38,15 +36,6 @@ public:
     void setOverlayWindow(HWND overlay);
     /// Asks the system to show the cursor again; safe to call repeatedly.
     void ensureCursorVisible();
-    /// Used by the idle custom cursor overlay.
-    void hideSystemCursor() { hideHardwareCursor(true, false); }
-    /// Hide only the normal arrow; text/resize/hand cursors stay untouched.
-    void hideSystemCursorArrowOnly() { hideHardwareCursor(true, true); }
-    void restoreSystemCursor() { hideHardwareCursor(false, false); }
-    void touchCursorWatchdog() { lastAlive_ = GetTickCount64(); }
-    [[nodiscard]] bool consumeWatchdogRestore() {
-        return watchdogRestored_.exchange(false);
-    }
     /// Re-enumerates OBS windows (it can start or move while LiveZoom is running).
     void refreshExcludedWindows();
 
@@ -70,9 +59,8 @@ private:
     bool createHost(HMONITOR monitor);
     void destroyHost();
     void showHost();
-    void hideHardwareCursor(bool hide, bool arrowOnly = false);
-    void blankSystemCursors(bool arrowOnly);
-    void cursorWatchdogLoop();
+    void hideHardwareCursor(bool hide);
+    void blankSystemCursors();
     void registerHostClass();
 
     Api api_;
@@ -86,13 +74,7 @@ private:
     bool excludeObs_ = true;
     HWND overlay_ = nullptr;
     bool hardwareCursorHidden_ = false;
-    std::atomic<bool> cursorBlanked_{false};
-    bool cursorBlankedAll_ = false;
-    std::atomic<bool> watchdogRestored_{false};
     std::mutex cursorMutex_;
-    std::thread cursorWatchdog_;
-    std::atomic<bool> watchStop_{false};
-    std::atomic<uint64_t> lastAlive_{0};
     std::vector<HWND> excluded_;
     bool classRegistered_ = false;
 };

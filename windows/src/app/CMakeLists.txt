@@ -5,7 +5,6 @@ add_executable(livezoom_win WIN32
     tray.cpp
     annotation.cpp
     overlay_renderer.cpp
-    ocr_service.cpp
     settings_ui.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../platform/win/magnification_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../platform/win/input_hook.cpp
