@@ -141,6 +141,46 @@ ClickPalette clickColorFromName(const std::wstring& name) {
 
 }  // namespace
 
+std::wstring HotkeyText(const Hotkey& hotkey) {
+    if (!hotkey.valid()) return L"未设置";
+    std::wstring text;
+    if (hotkey.mods & 1) text += L"Ctrl+";
+    if (hotkey.mods & 2) text += L"Alt+";
+    if (hotkey.mods & 4) text += L"Shift+";
+    if (hotkey.mods & 8) text += L"Win+";
+
+    const unsigned vk = hotkey.vk;
+    wchar_t key[32]{};
+    if (vk >= '0' && vk <= '9') {
+        key[0] = static_cast<wchar_t>(vk);
+    } else if (vk >= 'A' && vk <= 'Z') {
+        key[0] = static_cast<wchar_t>(vk);
+    } else if (vk >= 0x70 && vk <= 0x87) {
+        std::swprintf(key, 32, L"F%u", vk - 0x6F);
+    } else {
+        switch (vk) {
+            case VK_LEFT: std::wcscpy(key, L"←"); break;
+            case VK_UP: std::wcscpy(key, L"↑"); break;
+            case VK_RIGHT: std::wcscpy(key, L"→"); break;
+            case VK_DOWN: std::wcscpy(key, L"↓"); break;
+            case VK_SPACE: std::wcscpy(key, L"Space"); break;
+            case VK_TAB: std::wcscpy(key, L"Tab"); break;
+            case VK_RETURN: std::wcscpy(key, L"Enter"); break;
+            case VK_ESCAPE: std::wcscpy(key, L"Esc"); break;
+            case VK_BACK: std::wcscpy(key, L"Backspace"); break;
+            case VK_DELETE: std::wcscpy(key, L"Delete"); break;
+            case VK_INSERT: std::wcscpy(key, L"Insert"); break;
+            case VK_HOME: std::wcscpy(key, L"Home"); break;
+            case VK_END: std::wcscpy(key, L"End"); break;
+            case VK_PRIOR: std::wcscpy(key, L"PageUp"); break;
+            case VK_NEXT: std::wcscpy(key, L"PageDown"); break;
+            default: std::swprintf(key, 32, L"VK 0x%02X", vk); break;
+        }
+    }
+    text += key;
+    return text;
+}
+
 std::wstring Settings::path() const {
     wchar_t appData[MAX_PATH];
     const DWORD length = GetEnvironmentVariableW(L"APPDATA", appData, MAX_PATH);
@@ -174,6 +214,26 @@ bool Settings::load() {
     } else {
         follow = FollowStyle::Calm;
     }
+    followMarginCalm =
+        std::clamp(readDouble(file, L"followMarginCalm", followMarginCalm), 0.01, 0.20);
+    followMarginStandard = std::clamp(
+        readDouble(file, L"followMarginStandard", followMarginStandard), 0.01, 0.20);
+    followMarginSnappy =
+        std::clamp(readDouble(file, L"followMarginSnappy", followMarginSnappy), 0.01, 0.20);
+
+    const auto readHotkey = [&](const wchar_t* key, Hotkey fallback) {
+        const std::wstring value = readString(file, key, L"");
+        unsigned vk = 0;
+        unsigned mods = 0;
+        if (std::swscanf(value.c_str(), L"%u:%u", &vk, &mods) == 2 && vk && mods) {
+            return Hotkey{vk, mods};
+        }
+        return fallback;
+    };
+    highlightBox = readHotkey(L"highlightBox", highlightBox);
+    highlightUnderline = readHotkey(L"highlightUnderline", highlightUnderline);
+    highlightFill = readHotkey(L"highlightFill", highlightFill);
+    highlightSpotlight = readHotkey(L"highlightSpotlight", highlightSpotlight);
 
     inkStyle = inkStyleFromName(readString(file, L"inkStyle", L"marker"));
     inkColor = inkColorFromName(readString(file, L"inkColor", L"red"));
@@ -202,6 +262,17 @@ bool Settings::save() const {
     if (follow == FollowStyle::Standard) followName = L"standard";
     if (follow == FollowStyle::Snappy) followName = L"snappy";
     writeString(file, L"follow", followName);
+    writeString(file, L"followMarginCalm", std::to_wstring(followMarginCalm));
+    writeString(file, L"followMarginStandard", std::to_wstring(followMarginStandard));
+    writeString(file, L"followMarginSnappy", std::to_wstring(followMarginSnappy));
+    const auto writeHotkey = [&](const wchar_t* key, const Hotkey& hotkey) {
+        writeString(file, key,
+                    std::to_wstring(hotkey.vk) + L":" + std::to_wstring(hotkey.mods));
+    };
+    writeHotkey(L"highlightBox", highlightBox);
+    writeHotkey(L"highlightUnderline", highlightUnderline);
+    writeHotkey(L"highlightFill", highlightFill);
+    writeHotkey(L"highlightSpotlight", highlightSpotlight);
     writeString(file, L"inkStyle", inkStyleName(inkStyle));
     writeString(file, L"inkColor", inkColorName(inkColor));
     writeString(file, L"strokeWidth", std::to_wstring(strokeWidth));
@@ -243,24 +314,27 @@ FollowPreset Settings::followPreset() const {
         case FollowStyle::Standard: preset = FollowPreset::standard; break;
         case FollowStyle::Snappy: preset = FollowPreset::snappy; break;
     }
-    // Windows feels better when the camera waits until the magnified cursor is close to the
-    // screen edge. The macOS presets use a much wider safe zone (25% of the screen), which
-    // made the canvas start moving while the pointer still looked far from the edge.
-    // Keep each preset's pan speed, but move the trigger closer to the edge.
+    // Keep each preset's pan speed; only the edge trigger distance is user-configurable.
+    // Defaults are 6% / 4% / 2% from the edge. After the camera follows, it settles a little
+    // further inward than the trigger so it makes one decisive move.
+    Real margin = followMarginCalm;
+    Real gap = 0.08;
     switch (follow) {
         case FollowStyle::Calm:
-            preset.margin = 0.06;
-            preset.settleMargin = 0.14;
+            margin = followMarginCalm;
+            gap = 0.08;
             break;
         case FollowStyle::Standard:
-            preset.margin = 0.04;
-            preset.settleMargin = 0.11;
+            margin = followMarginStandard;
+            gap = 0.07;
             break;
         case FollowStyle::Snappy:
-            preset.margin = 0.02;
-            preset.settleMargin = 0.08;
+            margin = followMarginSnappy;
+            gap = 0.06;
             break;
     }
+    preset.margin = margin;
+    preset.settleMargin = std::min(margin + gap, 0.45);
     return preset;
 }
 

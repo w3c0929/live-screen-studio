@@ -9,6 +9,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -36,6 +37,17 @@ std::unique_ptr<OcrService> g_ocr;
 std::unique_ptr<ZoomController> g_controller;
 std::unique_ptr<Tray> g_tray;
 lz::Settings g_settings;
+
+void applyHotkeys() {
+    if (!g_input) return;
+    std::array<HotkeyBinding, 4> bindings{{
+        {g_settings.highlightBox.vk, g_settings.highlightBox.mods},
+        {g_settings.highlightUnderline.vk, g_settings.highlightUnderline.mods},
+        {g_settings.highlightFill.vk, g_settings.highlightFill.mods},
+        {g_settings.highlightSpotlight.vk, g_settings.highlightSpotlight.mods},
+    }};
+    g_input->setHighlightHotkeys(bindings);
+}
 
 void showTrayMenu(HWND window) {
     HMENU menu = CreatePopupMenu();
@@ -66,8 +78,10 @@ void showTrayMenu(HWND window) {
             if (!g_settings.enabled) g_controller->reset();
             break;
         case 3:
-            showSettingsDialog(window, g_settings);
-            g_controller->reloadSettings();
+            if (showSettingsDialog(window, g_settings)) {
+                g_controller->reloadSettings();
+                applyHotkeys();
+            }
             g_input->setEnabled(g_settings.enabled);
             g_tray->setEnabled(g_settings.enabled);
             break;
@@ -284,6 +298,7 @@ int run(int argc, char** argv) {
     }
     g_input->setEnabled(g_settings.enabled);
     g_input->setAcceptInjected(acceptInjected);
+    applyHotkeys();
 
     g_tray = std::make_unique<Tray>(g_window);
     g_tray->add(L"LiveZoom");
@@ -294,8 +309,10 @@ int run(int argc, char** argv) {
         SetTimer(g_window, kExitTimer, static_cast<UINT>(runSeconds * 1000), nullptr);
     }
     if (openSettings) {
-        showSettingsDialog(g_window, g_settings);
-        g_controller->reloadSettings();
+        if (showSettingsDialog(g_window, g_settings)) {
+            g_controller->reloadSettings();
+            applyHotkeys();
+        }
     }
     std::printf("[livezoom] running; middle click toggles zoom (enabled=%d)\n",
                 g_settings.enabled ? 1 : 0);
