@@ -28,6 +28,7 @@ constexpr int kIdMarginStandard = 1016;
 constexpr int kIdMarginSnappy = 1017;
 constexpr int kIdHotkeyOpen = 1018;
 constexpr int kIdAutoStart = 1020;
+constexpr int kIdMiddleClick = 1021;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 constexpr int kIdRecordToggle = 3001;
@@ -59,6 +60,7 @@ HWND g_cursorSizeCombo = nullptr;
 HWND g_cursorStyleCombo = nullptr;
 HWND g_smoothCursorCheck = nullptr;
 HWND g_hideIdleCheck = nullptr;
+HWND g_middleClickCheck = nullptr;
 HWND g_autoStartCheck = nullptr;
 HWND g_marginCalmCombo = nullptr;
 HWND g_marginStandardCombo = nullptr;
@@ -254,6 +256,10 @@ void createControls(HWND dialog) {
     g_hideIdleCheck = addCheck(dialog, kIdHideIdle, L"静止后隐藏光标（3 秒）", 24, 236, 300, 24);
     SendMessageW(g_hideIdleCheck, BM_SETCHECK,
                  g_settings->hideIdleCursor ? BST_CHECKED : BST_UNCHECKED, 0);
+    g_middleClickCheck = addCheck(dialog, kIdMiddleClick,
+                                  L"使用鼠标中键放大/缩回（含滚轮调倍）", 24, 268, 400, 24);
+    SendMessageW(g_middleClickCheck, BM_SETCHECK,
+                 g_settings->middleClickZoom ? BST_CHECKED : BST_UNCHECKED, 0);
     g_autoStartCheck = addCheck(dialog, kIdAutoStart, L"开机启动 LiveZoom", 800, 208, 200, 24);
     SendMessageW(g_autoStartCheck, BM_SETCHECK,
                  autoStartEnabled() ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -354,7 +360,7 @@ void createControls(HWND dialog) {
     CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 24, 320,
                     1000, 2, dialog, nullptr, GetModuleHandleW(nullptr), nullptr);
     addStatic(dialog,
-              L"放大/缩回：中键，或默认 Ctrl+Shift+Z（快捷键可自定义）\n"
+              L"放大/缩回：中键（可关闭），或默认 Ctrl+Shift+Z（快捷键可自定义）\n"
               L"按住中键滚动：调倍    放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
               L"右键：撤销    Esc：清除笔迹\n"
               L"聚光灯：默认 Ctrl+Shift+4 在光标周围聚光（可自定义快捷键）\n"
@@ -384,6 +390,8 @@ void readControls() {
         SendMessageW(g_smoothCursorCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->hideIdleCursor =
         SendMessageW(g_hideIdleCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings->middleClickZoom =
+        SendMessageW(g_middleClickCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     const bool autoStart = SendMessageW(g_autoStartCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     if (!setAutoStart(autoStart)) {

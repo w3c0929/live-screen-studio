@@ -50,6 +50,8 @@ public:
     void stop();
 
     void setEnabled(bool enabled) { enabled_ = enabled; }
+    /// When off, middle-button clicks and middle-wheel pass through to the app untouched.
+    void setMiddleClickEnabled(bool enabled) { middleClickEnabled_ = enabled; }
     void setZoomActive(bool active);
     /// Whether a left drag should draw instead of reaching the app.
     void setDrawingArmed(bool armed);
@@ -88,6 +90,7 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> installed_{false};
     std::atomic<bool> enabled_{true};
+    std::atomic<bool> middleClickEnabled_{true};
     std::atomic<bool> zoomActive_{false};
     std::atomic<bool> drawingArmed_{false};
     std::atomic<bool> hasStrokes_{false};

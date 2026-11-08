@@ -211,7 +211,8 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
             const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
             switch (message) {
                 case WM_MBUTTONDOWN:
-                    if (!(GetAsyncKeyState(VK_MENU) & 0x8000)) {
+                    if (self->middleClickEnabled_ &&
+                        !(GetAsyncKeyState(VK_MENU) & 0x8000)) {
                         self->middleDown_ = true;
                         PostMessageW(self->target_, kLiveZoomToggle, 0, 0);
                         return 1;
@@ -224,7 +225,7 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                     }
                     break;
                 case WM_MOUSEWHEEL:
-                    if (self->middleDown_) {
+                    if (self->middleClickEnabled_ && self->middleDown_) {
                         const int delta = static_cast<short>(HIWORD(mouse->mouseData));
                         const double steps = static_cast<double>(delta) / 120.0;
                         PostMessageW(self->target_, kLiveZoomAdjust,

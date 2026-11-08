@@ -51,6 +51,7 @@ bool runSettingsDialog(HWND window) {
         applyHotkeys();
     }
     g_input->setEnabled(g_settings.enabled);
+    g_input->setMiddleClickEnabled(g_settings.middleClickZoom);
     g_tray->setEnabled(g_settings.enabled);
     return accepted;
 }
@@ -275,6 +276,7 @@ int run(int argc, char** argv) {
         return 1;
     }
     g_input->setEnabled(g_settings.enabled);
+    g_input->setMiddleClickEnabled(g_settings.middleClickZoom);
     g_input->setAcceptInjected(acceptInjected);
     applyHotkeys();
 
@@ -289,8 +291,8 @@ int run(int argc, char** argv) {
     if (openSettings) {
         runSettingsDialog(g_window);
     }
-    std::printf("[livezoom] running; middle click toggles zoom (enabled=%d)\n",
-                g_settings.enabled ? 1 : 0);
+    std::printf("[livezoom] running; enabled=%d middleClick=%d\n",
+                g_settings.enabled ? 1 : 0, g_settings.middleClickZoom ? 1 : 0);
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {

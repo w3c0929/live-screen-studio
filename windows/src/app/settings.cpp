@@ -199,6 +199,7 @@ bool Settings::load() {
     smoothImage = readBool(file, L"smoothImage", smoothImage);
     excludeObs = readBool(file, L"excludeObs", excludeObs);
     drawWhileZoomed = readBool(file, L"drawWhileZoomed", drawWhileZoomed);
+    middleClickZoom = readBool(file, L"middleClickZoom", middleClickZoom);
     cursorSize = std::clamp(readDouble(file, L"cursorSize", cursorSize), 0.5, 3.0);
     cursorStyle = cursorStyleFromName(readString(file, L"cursorStyle", L"classic"));
     smoothCursor = readBool(file, L"smoothCursor", smoothCursor);
@@ -249,6 +250,7 @@ bool Settings::save() const {
     writeString(file, L"smoothImage", smoothImage ? L"1" : L"0");
     writeString(file, L"excludeObs", excludeObs ? L"1" : L"0");
     writeString(file, L"drawWhileZoomed", drawWhileZoomed ? L"1" : L"0");
+    writeString(file, L"middleClickZoom", middleClickZoom ? L"1" : L"0");
     writeString(file, L"cursorSize", std::to_wstring(cursorSize));
     writeString(file, L"cursorStyle", cursorStyleName(cursorStyle));
     writeString(file, L"smoothCursor", smoothCursor ? L"1" : L"0");
