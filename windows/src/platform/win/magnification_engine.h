@@ -74,6 +74,9 @@ private:
     bool excludeObs_ = true;
     HWND overlay_ = nullptr;
     bool hardwareCursorHidden_ = false;
+    lz::Point viewportSource_{};
+    double viewportZoom_ = 0;
+    bool viewportValid_ = false;
     std::mutex cursorMutex_;
     std::vector<HWND> excluded_;
     bool classRegistered_ = false;

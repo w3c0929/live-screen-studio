@@ -174,6 +174,7 @@ void MagnificationEngine::destroyHost() {
     }
     monitor_ = nullptr;
     visible_ = false;
+    viewportValid_ = false;
 }
 
 bool MagnificationEngine::showForMonitor(HMONITOR monitor) {
@@ -212,6 +213,13 @@ void MagnificationEngine::hide() {
 
 void MagnificationEngine::setViewport(lz::Point sourceTopLeft, double zoom) {
     if (!mag_ || !api_.setWindowTransform) return;
+    // Re-applying an identical transform forces the magnifier to repaint the whole screen,
+    // which starves the overlay animation (click ripple, cursor smoothing) while the camera
+    // is holding still.
+    if (viewportValid_ && viewportZoom_ == zoom && viewportSource_ == sourceTopLeft) return;
+    viewportSource_ = sourceTopLeft;
+    viewportZoom_ = zoom;
+    viewportValid_ = true;
     const float scale = static_cast<float>(zoom);
     const float x = static_cast<float>(sourceTopLeft.x);
     const float y = static_cast<float>(sourceTopLeft.y);

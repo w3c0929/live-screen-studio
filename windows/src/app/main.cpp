@@ -7,6 +7,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <timeapi.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -284,6 +285,9 @@ int run(int argc, char** argv) {
     g_tray->add(L"LiveZoom");
     g_tray->setEnabled(g_settings.enabled);
 
+    // A finer system timer keeps the overlay animation near display refresh instead of the
+    // default ~15.6 ms tick, which makes click ripple and cursor easing look steppy.
+    timeBeginPeriod(1);
     SetTimer(g_window, kFrameTimer, 8, nullptr);
     if (runSeconds > 0) {
         SetTimer(g_window, kExitTimer, static_cast<UINT>(runSeconds * 1000), nullptr);
@@ -302,6 +306,7 @@ int run(int argc, char** argv) {
 
     KillTimer(g_window, kFrameTimer);
     KillTimer(g_window, kExitTimer);
+    timeEndPeriod(1);
     if (g_controller) g_controller->reset();
     if (g_input) g_input->stop();
     if (g_tray) g_tray->remove();
