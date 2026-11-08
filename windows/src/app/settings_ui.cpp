@@ -30,8 +30,9 @@ constexpr int kIdHotkeyOpen = 1018;
 constexpr int kIdAutoStart = 1020;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
-constexpr int kIdRecordSpotlight = 3001;
-constexpr int kIdHotkeyClose = 3002;
+constexpr int kIdRecordToggle = 3001;
+constexpr int kIdRecordSpotlight = 3002;
+constexpr int kIdHotkeyClose = 3010;
 
 constexpr wchar_t kHotkeyClass[] = L"LiveZoomHotkeyWindow";
 
@@ -66,10 +67,12 @@ lz::Settings* g_settings = nullptr;
 bool g_done = false;
 bool g_accepted = false;
 
-lz::Hotkey g_editHotkey;
+lz::Hotkey g_editToggleHotkey;
+lz::Hotkey g_editSpotlightHotkey;
 HWND g_hotkeyDialog = nullptr;
-HWND g_hotkeyLabel = nullptr;
-bool g_recording = false;
+HWND g_toggleLabel = nullptr;
+HWND g_spotlightLabel = nullptr;
+int g_recordingKind = -1;
 bool g_hotkeyDone = false;
 
 void setFont(HWND control) {
@@ -345,14 +348,14 @@ void createControls(HWND dialog) {
     addStatic(dialog, L"灵敏", 800, 128, 90, 22);
     g_marginSnappyCombo = addCombo(dialog, kIdMarginSnappy, 900, 124, 100, 220);
     fillMarginCombo(g_marginSnappyCombo, g_settings->followMarginSnappy);
-    addButton(dialog, kIdHotkeyOpen, L"聚光灯快捷键…", 800, 168, 180, 30);
+    addButton(dialog, kIdHotkeyOpen, L"快捷键…", 800, 168, 180, 30);
 
     // Explanatory text lives in a dedicated bottom block, never between controls.
     CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 24, 320,
                     1000, 2, dialog, nullptr, GetModuleHandleW(nullptr), nullptr);
     addStatic(dialog,
-              L"中键：放大/缩回    按住中键滚动：调倍\n"
-              L"放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
+              L"放大/缩回：中键，或默认 Ctrl+Shift+Z（快捷键可自定义）\n"
+              L"按住中键滚动：调倍    放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
               L"右键：撤销    Esc：清除笔迹\n"
               L"聚光灯：默认 Ctrl+Shift+4 在光标周围聚光（可自定义快捷键）\n"
               L"跟随边缘：百分比越小，越靠近屏幕边缘才移动",
@@ -446,21 +449,27 @@ void readControls() {
     g_settings->followMarginSnappy =
         readMargin(g_marginSnappyCombo, g_settings->followMarginSnappy);
 
-    g_settings->highlightSpotlight = g_editHotkey;
+    g_settings->zoomHotkey = g_editToggleHotkey;
+    g_settings->highlightSpotlight = g_editSpotlightHotkey;
 }
 
-void updateHotkeyLabel() {
-    if (g_hotkeyLabel) SetWindowTextW(g_hotkeyLabel, lz::HotkeyText(g_editHotkey).c_str());
+void updateHotkeyLabel(int kind) {
+    if (kind == 0 && g_toggleLabel) {
+        SetWindowTextW(g_toggleLabel, lz::HotkeyText(g_editToggleHotkey).c_str());
+    } else if (kind == 1 && g_spotlightLabel) {
+        SetWindowTextW(g_spotlightLabel, lz::HotkeyText(g_editSpotlightHotkey).c_str());
+    }
 }
 
 LRESULT CALLBACK hotkeyProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_COMMAND: {
             const int id = LOWORD(wParam);
-            if (id == kIdRecordSpotlight) {
-                g_recording = true;
+            if (id == kIdRecordToggle || id == kIdRecordSpotlight) {
+                g_recordingKind = id == kIdRecordToggle ? 0 : 1;
                 SetFocus(g_hotkeyDialog);
-                SetWindowTextW(g_hotkeyLabel, L"请按组合键…（Esc 取消）");
+                SetWindowTextW(g_recordingKind == 0 ? g_toggleLabel : g_spotlightLabel,
+                               L"请按组合键…（Esc 取消）");
                 return 0;
             }
             if (id == kIdHotkeyClose) {
@@ -471,11 +480,11 @@ LRESULT CALLBACK hotkeyProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         }
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN: {
-            if (!g_recording) break;
+            if (g_recordingKind < 0) break;
             const UINT vk = static_cast<UINT>(wParam);
             if (vk == VK_ESCAPE) {
-                updateHotkeyLabel();
-                g_recording = false;
+                updateHotkeyLabel(g_recordingKind);
+                g_recordingKind = -1;
                 return 0;
             }
             if (vk == VK_CONTROL || vk == VK_MENU || vk == VK_SHIFT || vk == VK_LWIN ||
@@ -489,16 +498,21 @@ LRESULT CALLBACK hotkeyProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000) ? 8u
                                                                                     : 0u);
             if (mods == 0) {
-                SetWindowTextW(g_hotkeyLabel, L"需要至少一个 Ctrl/Alt/Shift/Win");
+                SetWindowTextW(g_recordingKind == 0 ? g_toggleLabel : g_spotlightLabel,
+                               L"需要至少一个 Ctrl/Alt/Shift/Win");
                 return 0;
             }
-            g_editHotkey = lz::Hotkey{vk, mods};
-            updateHotkeyLabel();
-            g_recording = false;
+            if (g_recordingKind == 0) {
+                g_editToggleHotkey = lz::Hotkey{vk, mods};
+            } else {
+                g_editSpotlightHotkey = lz::Hotkey{vk, mods};
+            }
+            updateHotkeyLabel(g_recordingKind);
+            g_recordingKind = -1;
             return 0;
         }
         case WM_SYSCHAR:
-            if (g_recording) return 0;
+            if (g_recordingKind >= 0) return 0;
             break;
         case WM_CLOSE:
             DestroyWindow(window);
@@ -506,8 +520,9 @@ LRESULT CALLBACK hotkeyProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         case WM_DESTROY:
             g_hotkeyDone = true;
             g_hotkeyDialog = nullptr;
-            g_hotkeyLabel = nullptr;
-            g_recording = false;
+            g_toggleLabel = nullptr;
+            g_spotlightLabel = nullptr;
+            g_recordingKind = -1;
             return 0;
         default:
             break;
@@ -517,7 +532,7 @@ LRESULT CALLBACK hotkeyProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 
 void showHotkeyDialog(HWND owner) {
     g_hotkeyDone = false;
-    g_recording = false;
+    g_recordingKind = -1;
 
     WNDCLASSEXW windowClass{};
     windowClass.cbSize = sizeof(windowClass);
@@ -529,23 +544,29 @@ void showHotkeyDialog(HWND owner) {
     RegisterClassExW(&windowClass);
 
     const int width = 560;
-    const int height = 230;
+    const int height = 280;
     const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
-    g_hotkeyDialog = CreateWindowExW(WS_EX_DLGMODALFRAME, kHotkeyClass, L"聚光灯快捷键",
+    g_hotkeyDialog = CreateWindowExW(WS_EX_DLGMODALFRAME, kHotkeyClass, L"快捷键",
                                      WS_CAPTION | WS_SYSMENU | WS_POPUP, x, y, width, height,
                                      owner, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!g_hotkeyDialog) return;
 
-    addStatic(g_hotkeyDialog, L"聚光灯", 20, 20, 80, 24);
-    g_hotkeyLabel = addStatic(g_hotkeyDialog, L"", 100, 20, 270, 24);
-    updateHotkeyLabel();
-    addButton(g_hotkeyDialog, kIdRecordSpotlight, L"录制", 390, 16, 80, 28);
+    addStatic(g_hotkeyDialog, L"放大/缩回", 20, 20, 80, 24);
+    g_toggleLabel = addStatic(g_hotkeyDialog, L"", 100, 20, 270, 24);
+    updateHotkeyLabel(0);
+    addButton(g_hotkeyDialog, kIdRecordToggle, L"录制", 390, 16, 80, 28);
+
+    addStatic(g_hotkeyDialog, L"聚光灯", 20, 60, 80, 24);
+    g_spotlightLabel = addStatic(g_hotkeyDialog, L"", 100, 60, 270, 24);
+    updateHotkeyLabel(1);
+    addButton(g_hotkeyDialog, kIdRecordSpotlight, L"录制", 390, 56, 80, 28);
+
     addStatic(g_hotkeyDialog,
               L"点击“录制”后按下组合键；至少包含一个 Ctrl/Alt/Shift/Win。\n"
               L"按 Esc 取消录制。修改会随主设置窗口的“确定”一起保存。",
-              20, 66, 520, 60);
-    addButton(g_hotkeyDialog, kIdHotkeyClose, L"关闭", 450, 150, 86, 30);
+              20, 108, 520, 60);
+    addButton(g_hotkeyDialog, kIdHotkeyClose, L"关闭", 450, 195, 86, 30);
 
     EnableWindow(owner, FALSE);
     ShowWindow(g_hotkeyDialog, SW_SHOW);
@@ -554,7 +575,7 @@ void showHotkeyDialog(HWND owner) {
 
     MSG message{};
     while (!g_hotkeyDone && GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (g_recording) {
+        if (g_recordingKind >= 0) {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         } else if (!IsDialogMessageW(g_hotkeyDialog, &message)) {
@@ -605,7 +626,8 @@ bool showSettingsDialog(HWND owner, lz::Settings& settings) {
     g_settings = &settings;
     g_done = false;
     g_accepted = false;
-    g_editHotkey = settings.highlightSpotlight;
+    g_editToggleHotkey = settings.zoomHotkey;
+    g_editSpotlightHotkey = settings.highlightSpotlight;
 
     WNDCLASSEXW windowClass{};
     windowClass.cbSize = sizeof(windowClass);

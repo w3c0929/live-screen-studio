@@ -57,7 +57,10 @@ public:
     void setHasStrokes(bool has) { hasStrokes_ = has; }
     /// Test/demo hook: accept SendInput/mouse_event events too.
     void setAcceptInjected(bool accept) { acceptInjected_ = accept; }
+    void setToggleHotkey(HotkeyBinding hotkey);
     void setSpotlightHotkey(HotkeyBinding hotkey);
+    /// Stops hotkeys from firing while the settings dialog records a new combination.
+    void setHotkeysSuppressed(bool suppressed) { hotkeysSuppressed_ = suppressed; }
     void setCursorBounds(std::optional<lz::Rect> bounds);
 
     [[nodiscard]] bool running() const { return installed_; }
@@ -89,6 +92,7 @@ private:
     std::atomic<bool> drawingArmed_{false};
     std::atomic<bool> hasStrokes_{false};
     std::atomic<bool> acceptInjected_{false};
+    std::atomic<bool> hotkeysSuppressed_{false};
     bool middleDown_ = false;
 
     enum class LeftState {
@@ -101,6 +105,9 @@ private:
     int moveCount_ = 0;
     bool ctrlAtDown_ = false;
     bool swallowRightUp_ = false;
+    bool toggleHeld_ = false;
+    UINT toggleHeldVk_ = 0;
+    HotkeyBinding toggleHotkey_{0x5A, 5};
     bool spotlightHeld_ = false;
     UINT spotlightHeldVk_ = 0;
     HotkeyBinding spotlightHotkey_{0x34, 5};

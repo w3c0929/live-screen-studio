@@ -229,6 +229,7 @@ bool Settings::load() {
         }
         return fallback;
     };
+    zoomHotkey = readHotkey(L"zoomHotkey", zoomHotkey);
     highlightSpotlight = readHotkey(L"highlightSpotlight", highlightSpotlight);
 
     inkStyle = inkStyleFromName(readString(file, L"inkStyle", L"marker"));
@@ -264,6 +265,7 @@ bool Settings::save() const {
         writeString(file, key,
                     std::to_wstring(hotkey.vk) + L":" + std::to_wstring(hotkey.mods));
     };
+    writeHotkey(L"zoomHotkey", zoomHotkey);
     writeHotkey(L"highlightSpotlight", highlightSpotlight);
     writeString(file, L"inkStyle", inkStyleName(inkStyle));
     writeString(file, L"inkColor", inkColorName(inkColor));

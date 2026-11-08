@@ -37,8 +37,22 @@ lz::Settings g_settings;
 
 void applyHotkeys() {
     if (!g_input) return;
+    g_input->setToggleHotkey({g_settings.zoomHotkey.vk, g_settings.zoomHotkey.mods});
     g_input->setSpotlightHotkey(
         {g_settings.highlightSpotlight.vk, g_settings.highlightSpotlight.mods});
+}
+
+bool runSettingsDialog(HWND window) {
+    g_input->setHotkeysSuppressed(true);
+    const bool accepted = showSettingsDialog(window, g_settings);
+    g_input->setHotkeysSuppressed(false);
+    if (accepted) {
+        g_controller->reloadSettings();
+        applyHotkeys();
+    }
+    g_input->setEnabled(g_settings.enabled);
+    g_tray->setEnabled(g_settings.enabled);
+    return accepted;
 }
 
 void showTrayMenu(HWND window) {
@@ -70,12 +84,7 @@ void showTrayMenu(HWND window) {
             if (!g_settings.enabled) g_controller->reset();
             break;
         case 3:
-            if (showSettingsDialog(window, g_settings)) {
-                g_controller->reloadSettings();
-                applyHotkeys();
-            }
-            g_input->setEnabled(g_settings.enabled);
-            g_tray->setEnabled(g_settings.enabled);
+            runSettingsDialog(window);
             break;
         case 4:
             PostMessageW(window, WM_CLOSE, 0, 0);
@@ -278,10 +287,7 @@ int run(int argc, char** argv) {
         SetTimer(g_window, kExitTimer, static_cast<UINT>(runSeconds * 1000), nullptr);
     }
     if (openSettings) {
-        if (showSettingsDialog(g_window, g_settings)) {
-            g_controller->reloadSettings();
-            applyHotkeys();
-        }
+        runSettingsDialog(g_window);
     }
     std::printf("[livezoom] running; middle click toggles zoom (enabled=%d)\n",
                 g_settings.enabled ? 1 : 0);

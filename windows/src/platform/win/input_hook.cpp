@@ -83,6 +83,11 @@ void InputHook::setDrawingArmed(bool armed) {
     drawingArmed_ = armed;
 }
 
+void InputHook::setToggleHotkey(HotkeyBinding hotkey) {
+    std::lock_guard lock(hotkeyMutex_);
+    toggleHotkey_ = hotkey;
+}
+
 void InputHook::setSpotlightHotkey(HotkeyBinding hotkey) {
     std::lock_guard lock(hotkeyMutex_);
     spotlightHotkey_ = hotkey;
@@ -313,8 +318,24 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
             if (!self->zoomActive_) {
                 self->spotlightHeld_ = false;
                 self->spotlightHeldVk_ = 0;
+            }
+            if (self->hotkeysSuppressed_) {
+                return CallNextHookEx(nullptr, code, message, lParam);
+            }
+            if (message == WM_KEYUP || message == WM_SYSKEYUP) {
+                if (self->toggleHeld_ && self->toggleHeldVk_ == keyboard->vkCode) {
+                    self->toggleHeld_ = false;
+                    self->toggleHeldVk_ = 0;
+                    return 1;
+                }
+                if (self->spotlightHeld_ && self->spotlightHeldVk_ == keyboard->vkCode) {
+                    self->spotlightHeld_ = false;
+                    self->spotlightHeldVk_ = 0;
+                    return 1;
+                }
             } else if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
-                if (keyboard->vkCode == VK_ESCAPE && self->hasStrokes_) {
+                if (self->zoomActive_ && keyboard->vkCode == VK_ESCAPE &&
+                    self->hasStrokes_) {
                     PostMessageW(self->target_, kLiveZoomClear, 0, 0);
                     return 1;
                 }
@@ -325,24 +346,29 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
                     (((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000)
                          ? 8u
                          : 0u);
-                HotkeyBinding binding;
+                HotkeyBinding toggle;
+                HotkeyBinding spotlight;
                 {
                     std::lock_guard lock(self->hotkeyMutex_);
-                    binding = self->spotlightHotkey_;
+                    toggle = self->toggleHotkey_;
+                    spotlight = self->spotlightHotkey_;
                 }
-                if (binding.vk != 0 && binding.vk == keyboard->vkCode &&
-                    binding.mods == mods) {
+                if (toggle.vk != 0 && toggle.vk == keyboard->vkCode &&
+                    toggle.mods == mods) {
+                    if (!self->toggleHeld_) {
+                        self->toggleHeld_ = true;
+                        self->toggleHeldVk_ = keyboard->vkCode;
+                        PostMessageW(self->target_, kLiveZoomToggle, 0, 0);
+                    }
+                    return 1;
+                }
+                if (self->zoomActive_ && spotlight.vk != 0 &&
+                    spotlight.vk == keyboard->vkCode && spotlight.mods == mods) {
                     if (!self->spotlightHeld_) {
                         self->spotlightHeld_ = true;
                         self->spotlightHeldVk_ = keyboard->vkCode;
                         PostMessageW(self->target_, kLiveZoomSpotlight, 0, 0);
                     }
-                    return 1;
-                }
-            } else if (message == WM_KEYUP || message == WM_SYSKEYUP) {
-                if (self->spotlightHeld_ && self->spotlightHeldVk_ == keyboard->vkCode) {
-                    self->spotlightHeld_ = false;
-                    self->spotlightHeldVk_ = 0;
                     return 1;
                 }
             }
