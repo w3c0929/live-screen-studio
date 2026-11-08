@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -11,12 +12,14 @@
 
 class MagnificationEngine;
 class InputHook;
+class OcrService;
 class OverlayRenderer;
 
 /// Ties the camera, the magnifier engine and the input hook together.
 class ZoomController {
 public:
-    ZoomController(MagnificationEngine& engine, InputHook& input, lz::Settings& settings);
+    ZoomController(MagnificationEngine& engine, InputHook& input, OcrService& ocr,
+                   lz::Settings& settings);
     ~ZoomController();
 
     void toggle();
@@ -31,6 +34,7 @@ public:
     void cancelStroke();
     void undoStroke();
     void clearStrokes();
+    void highlight(int kind);
     void reloadSettings();
 
     [[nodiscard]] bool active() const { return active_; }
@@ -44,6 +48,7 @@ private:
 
     MagnificationEngine& engine_;
     InputHook& input_;
+    OcrService& ocr_;
     lz::Settings& settings_;
     std::unique_ptr<OverlayRenderer> overlay_;
 
@@ -54,6 +59,7 @@ private:
     lz::Size display_{};
     bool active_ = false;
     bool strokeDrawing_ = false;
+    uint64_t session_ = 0;
     double lastTick_ = 0;
     double cursorRestoreAt_ = 0;
     int cursorRestoreTries_ = 0;

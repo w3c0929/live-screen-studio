@@ -293,12 +293,34 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
     if (code == HC_ACTION && self && self->running_ && self->enabled_) {
         const auto* keyboard = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
         if ((!(keyboard->flags & LLKHF_INJECTED) || self->acceptInjected_) &&
-            keyboard->dwExtraInfo != kSyntheticMarker &&
-            (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)) {
-            if (keyboard->vkCode == VK_ESCAPE && self->zoomActive_ &&
-                self->hasStrokes_) {
-                PostMessageW(self->target_, kLiveZoomClear, 0, 0);
-                return 1;
+            keyboard->dwExtraInfo != kSyntheticMarker) {
+            if (!self->zoomActive_) {
+                for (bool& held : self->highlightHeld_) held = false;
+            } else if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
+                if (keyboard->vkCode == VK_ESCAPE && self->hasStrokes_) {
+                    PostMessageW(self->target_, kLiveZoomClear, 0, 0);
+                    return 1;
+                }
+                const bool control = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+                if (control && shift && keyboard->vkCode >= '1' &&
+                    keyboard->vkCode <= '4') {
+                    const int index = keyboard->vkCode - '1';
+                    if (!self->highlightHeld_[index]) {
+                        self->highlightHeld_[index] = true;
+                        PostMessageW(self->target_, kLiveZoomHighlight,
+                                     static_cast<WPARAM>(index), 0);
+                    }
+                    return 1;
+                }
+            } else if (message == WM_KEYUP || message == WM_SYSKEYUP) {
+                if (keyboard->vkCode >= '1' && keyboard->vkCode <= '4') {
+                    const int index = keyboard->vkCode - '1';
+                    if (self->highlightHeld_[index]) {
+                        self->highlightHeld_[index] = false;
+                        return 1;
+                    }
+                }
             }
         }
     }

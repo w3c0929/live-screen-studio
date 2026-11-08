@@ -304,13 +304,25 @@ void OverlayRenderer::clear() {
 }
 
 void OverlayRenderer::addHighlight(HighlightKind kind, lz::Rect line) {
+    addHighlight(kind, line, mappingZoom_);
+}
+
+void OverlayRenderer::addHighlight(HighlightKind kind, lz::Rect line, double zoom) {
     if (!visible_) return;
     if (kind == HighlightKind::Spotlight) {
         annotations_.erase(std::remove_if(annotations_.begin(), annotations_.end(),
                                          [](const lz::Annotation& a) { return a.spotlight; }),
                           annotations_.end());
     }
-    annotations_.push_back(lz::Annotation::highlight(kind, line, ink_, mappingZoom_));
+    annotations_.push_back(lz::Annotation::highlight(kind, line, ink_, zoom));
+}
+
+bool OverlayRenderer::removeSpotlight() {
+    const auto it = std::find_if(annotations_.begin(), annotations_.end(),
+                                 [](const lz::Annotation& a) { return a.spotlight; });
+    if (it == annotations_.end()) return false;
+    annotations_.erase(it);
+    return true;
 }
 
 void OverlayRenderer::addClick(lz::Point screenLocal, double now) {

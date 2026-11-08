@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.5.0",
+    [string]$Version = "0.6.0",
     [switch]$SkipBuild
 )
 
@@ -20,12 +20,22 @@ if (-not (Test-Path $exe)) {
 }
 
 New-Item -ItemType Directory -Force $dist | Out-Null
+$ocrOut = Join-Path $dist "ocr"
+if (Test-Path $ocrOut) { Remove-Item $ocrOut -Recurse -Force }
+dotnet publish (Join-Path $root "poc\ocr_poc\ocr_poc.csproj") -c Release -r win-x64 `
+    --self-contained true -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false `
+    -p:DebugType=None -p:DebugSymbols=false -o $ocrOut
+
 $stage = Join-Path $dist "LiveZoom-$Version-windows-x64-portable"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force $stage | Out-Null
 
 Copy-Item $exe $stage
 Copy-Item (Join-Path $root "README.md") $stage
+New-Item -ItemType Directory -Force (Join-Path $stage "ocr") | Out-Null
+Copy-Item (Join-Path $ocrOut "ocr_poc.exe") (Join-Path $stage "ocr")
 
 $zip = Join-Path $dist "LiveZoom-$Version-windows-x64-portable.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }

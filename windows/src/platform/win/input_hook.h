@@ -19,6 +19,7 @@ inline constexpr UINT kLiveZoomUndo = WM_APP + 8;
 inline constexpr UINT kLiveZoomClear = WM_APP + 9;
 inline constexpr UINT kLiveZoomClick = WM_APP + 10;
 inline constexpr UINT kLiveZoomStrokeCancel = WM_APP + 11;
+inline constexpr UINT kLiveZoomHighlight = WM_APP + 13;
 inline constexpr UINT kLiveZoomTray = WM_APP + 100;
 
 /// Heap-allocated stroke point delivered from the hook thread; the UI thread deletes it.
@@ -91,6 +92,7 @@ private:
     int moveCount_ = 0;
     bool ctrlAtDown_ = false;
     bool swallowRightUp_ = false;
+    bool highlightHeld_[4] = {false, false, false, false};
     HHOOK mouseHook_ = nullptr;
     HHOOK keyboardHook_ = nullptr;
 

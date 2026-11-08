@@ -43,6 +43,8 @@ public:
     [[nodiscard]] bool hasContent() const { return !annotations_.empty(); }
 
     void addHighlight(HighlightKind kind, lz::Rect line);
+    void addHighlight(HighlightKind kind, lz::Rect line, double zoom);
+    bool removeSpotlight();
     void addClick(lz::Point screenLocal, double now);
     /// Screen-local position of the drawn cursor, scaled with the zoom.
     void setCursor(lz::Point position, double scale, double opacity);

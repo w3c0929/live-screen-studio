@@ -1,5 +1,5 @@
 #define AppName "LiveZoom"
-#define AppVersion "0.5.0"
+#define AppVersion "0.6.0"
 #define AppPublisher "LiveZoom"
 #define AppExeName "livezoom_win.exe"
 
@@ -34,6 +34,7 @@ Name: "startup"; Description: "开机启动 LiveZoom"; GroupDescription: "启动
 [Files]
 Source: "..\build-release\src\app\livezoom_win.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
+Source: "..\dist\ocr\ocr_poc.exe"; DestDir: "{app}\ocr"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"

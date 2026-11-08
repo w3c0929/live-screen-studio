@@ -257,11 +257,13 @@ void createControls(HWND dialog) {
               L"放大后左键拖动：画线    Shift：直线\n"
               L"Ctrl+左键拖动：正常拖拽    右键：撤销\n"
               L"Esc：清除笔迹\n"
+              L"高亮：Ctrl+Shift+1 框住 / 2 划线\n"
+              L"      Ctrl+Shift+3 荧光 / 4 聚光灯\n"
               L"跟随速度越灵敏，画布越晚开始移动",
-              24, 264, 370, 92);
+              24, 264, 370, 110);
 
-    addButton(dialog, kIdOk, L"确定", 590, 370, 86, 30);
-    addButton(dialog, kIdCancel, L"取消", 686, 370, 86, 30);
+    addButton(dialog, kIdOk, L"确定", 590, 390, 86, 30);
+    addButton(dialog, kIdCancel, L"取消", 686, 390, 86, 30);
 }
 
 void readControls() {
@@ -378,7 +380,7 @@ void showSettingsDialog(HWND owner, lz::Settings& settings) {
     RegisterClassExW(&windowClass);
 
     const int width = 780;
-    const int height = 440;
+    const int height = 460;
     const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 

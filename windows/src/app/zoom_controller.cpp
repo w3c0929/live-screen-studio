@@ -6,13 +6,15 @@
 
 #include "input_hook.h"
 #include "magnification_engine.h"
+#include "ocr_service.h"
 #include "overlay_renderer.h"
 #include "style.h"
 
-ZoomController::ZoomController(MagnificationEngine& engine, InputHook& input,
+ZoomController::ZoomController(MagnificationEngine& engine, InputHook& input, OcrService& ocr,
                                lz::Settings& settings)
     : engine_(engine),
       input_(input),
+      ocr_(ocr),
       settings_(settings),
       overlay_(std::make_unique<OverlayRenderer>()) {
     QueryPerformanceFrequency(&frequency_);
@@ -48,6 +50,7 @@ lz::Point ZoomController::contentPoint(int x, int y) const {
 }
 
 void ZoomController::startZoom() {
+    ++session_;
     POINT cursor{};
     GetCursorPos(&cursor);
     const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
@@ -110,6 +113,7 @@ void ZoomController::startZoom() {
 
 void ZoomController::finish() {
     if (!active_) return;
+    ++session_;
     active_ = false;
     if (overlay_) {
         overlay_->clear();
@@ -288,6 +292,77 @@ void ZoomController::clearStrokes() {
     if (!overlay_) return;
     overlay_->clear();
     input_.setHasStrokes(false);
+}
+
+void ZoomController::highlight(int kindIndex) {
+    if (!active_ || !overlay_ || !overlay_->visible()) return;
+    lz::HighlightKind kind = lz::HighlightKind::Box;
+    switch (kindIndex) {
+        case 0: kind = lz::HighlightKind::Box; break;
+        case 1: kind = lz::HighlightKind::Underline; break;
+        case 2: kind = lz::HighlightKind::Fill; break;
+        case 3: kind = lz::HighlightKind::Spotlight; break;
+        default: return;
+    }
+    if (kind == lz::HighlightKind::Spotlight && overlay_->removeSpotlight()) {
+        input_.setHasStrokes(overlay_->hasContent());
+        return;
+    }
+    if (!ocr_.available()) {
+        std::printf("[livezoom] OCR helper not found\n");
+        return;
+    }
+
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    const lz::Rect viewport = shownViewport();
+    const double zoom = camera_ ? camera_->zoom() : 1.0;
+    const lz::Point cursorContent = contentPoint(cursor.x, cursor.y);
+    const lz::Point mapped{(cursorContent.x - viewport.x) * zoom,
+                           (cursorContent.y - viewport.y) * zoom};
+    const uint64_t session = session_;
+    std::printf("[livezoom] OCR highlight kind=%d at (%.0f,%.0f)\n", kindIndex, mapped.x,
+                mapped.y);
+
+    const RECT capture = monitorRect_;
+    ocr_.recognize(capture, [this, kind, viewport, zoom, mapped, session](
+                                std::vector<OcrLine> lines) {
+        if (session != session_ || !active_ || !overlay_ || !overlay_->visible()) return;
+        if (lines.empty()) {
+            std::printf("[livezoom] OCR returned no lines\n");
+            return;
+        }
+        const OcrLine* best = nullptr;
+        double bestScore = 0;
+        for (const OcrLine& line : lines) {
+            const lz::Rect& box = line.box;
+            if (mapped.y < box.minY() - box.height * 0.8 ||
+                mapped.y > box.maxY() + box.height * 0.8) {
+                continue;
+            }
+            const double vertical =
+                std::max({box.minY() - mapped.y, mapped.y - box.maxY(), 0.0});
+            const double gap =
+                std::max({box.minX() - mapped.x, mapped.x - box.maxX(), 0.0});
+            if (gap > box.height * 4) continue;
+            const double score = vertical * 1000 + gap;
+            if (!best || score < bestScore) {
+                best = &line;
+                bestScore = score;
+            }
+        }
+        if (!best) {
+            std::printf("[livezoom] OCR found no line at the cursor\n");
+            return;
+        }
+        const lz::Rect content{
+            viewport.x + best->box.x / zoom, viewport.y + best->box.y / zoom,
+            best->box.width / zoom, best->box.height / zoom};
+        overlay_->addHighlight(kind, content, zoom);
+        input_.setHasStrokes(overlay_->hasContent());
+        std::printf("[livezoom] highlighted line (%.0f,%.0f,%.0f,%.0f)\n", content.x,
+                    content.y, content.width, content.height);
+    });
 }
 
 void ZoomController::reloadSettings() {
