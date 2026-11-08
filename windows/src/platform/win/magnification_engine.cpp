@@ -275,19 +275,23 @@ void MagnificationEngine::refreshExcludedWindows() {
     }
 }
 
-void MagnificationEngine::blankSystemCursors() {
+void MagnificationEngine::blankSystemCursors(bool arrowOnly) {
     // A transparent 32x32 cursor. Each id needs a fresh cursor because SetSystemCursor
-    // destroys the handle it is given.
+    // destroys the handle it is given. Idle mode replaces only OCR_NORMAL so text, resize
+    // and hand cursors keep their native look and meaning.
     constexpr DWORD ids[] = {
         32512, 32513, 32514, 32515, 32516, 32642, 32643,
         32644, 32645, 32646, 32648, 32649, 32650, 32651,
     };
+    constexpr DWORD arrowId = 32512;
     bool any = false;
     BYTE andMask[32 * 32 / 8];
     BYTE xorMask[32 * 32 / 8];
     std::memset(andMask, 0xFF, sizeof(andMask));
     std::memset(xorMask, 0, sizeof(xorMask));
-    for (const DWORD id : ids) {
+    const size_t count = arrowOnly ? 1 : std::size(ids);
+    for (size_t i = 0; i < count; ++i) {
+        const DWORD id = arrowOnly ? arrowId : ids[i];
         HCURSOR cursor = CreateCursor(GetModuleHandleW(nullptr), 0, 0, 32, 32, andMask,
                                       xorMask);
         if (!cursor) continue;
@@ -297,22 +301,28 @@ void MagnificationEngine::blankSystemCursors() {
             DestroyCursor(cursor);
         }
     }
-    std::printf("[livezoom] system cursors blanked=%d\n", any ? 1 : 0);
+    std::printf("[livezoom] system cursors blanked=%d arrowOnly=%d\n", any ? 1 : 0,
+                arrowOnly ? 1 : 0);
 }
 
-void MagnificationEngine::hideHardwareCursor(bool hide) {
+void MagnificationEngine::hideHardwareCursor(bool hide, bool arrowOnly) {
     if (!hide) {
         ensureCursorVisible();
         return;
     }
     std::lock_guard lock(cursorMutex_);
-    if (hardwareCursorHidden_ && cursorBlanked_) return;
+    if (arrowOnly) {
+        if (cursorBlanked_) return;
+    } else if (hardwareCursorHidden_ && cursorBlanked_ && cursorBlankedAll_) {
+        return;
+    }
     if (api_.showSystemCursor) api_.showSystemCursor(FALSE);
-    blankSystemCursors();
+    blankSystemCursors(arrowOnly);
     hardwareCursorHidden_ = true;
     cursorBlanked_ = true;
+    if (!arrowOnly) cursorBlankedAll_ = true;
     lastAlive_ = GetTickCount64();
-    std::printf("[livezoom] hardware cursor hidden\n");
+    std::printf("[livezoom] hardware cursor hidden arrowOnly=%d\n", arrowOnly ? 1 : 0);
 }
 
 void MagnificationEngine::ensureCursorVisible() {
@@ -322,6 +332,7 @@ void MagnificationEngine::ensureCursorVisible() {
     if (api_.showSystemCursor) api_.showSystemCursor(TRUE);
     hardwareCursorHidden_ = false;
     cursorBlanked_ = false;
+    cursorBlankedAll_ = false;
 
     // Reloading the current cursor scheme restores the real cursor bitmaps after
     // SetSystemCursor replaced them with blank ones, and recovers drivers that keep the

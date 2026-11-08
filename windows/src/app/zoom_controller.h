@@ -60,6 +60,8 @@ private:
     lz::Size idleDisplay_{};
     bool idleCursorActive_ = false;
     bool idleHardwareHidden_ = false;
+    HCURSOR idleLastCursor_ = nullptr;
+    bool idleCursorIsBlank_ = false;
     double lastIdleRender_ = 0;
 
     std::optional<lz::ZoomCamera> camera_;

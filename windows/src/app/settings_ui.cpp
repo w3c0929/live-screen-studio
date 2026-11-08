@@ -28,6 +28,7 @@ constexpr int kIdMarginStandard = 1016;
 constexpr int kIdMarginSnappy = 1017;
 constexpr int kIdHotkeyOpen = 1018;
 constexpr int kIdCustomAlways = 1019;
+constexpr int kIdAutoStart = 1020;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 constexpr int kIdRecordBase = 3001;
@@ -59,6 +60,7 @@ HWND g_cursorStyleCombo = nullptr;
 HWND g_smoothCursorCheck = nullptr;
 HWND g_hideIdleCheck = nullptr;
 HWND g_customAlwaysCheck = nullptr;
+HWND g_autoStartCheck = nullptr;
 HWND g_marginCalmCombo = nullptr;
 HWND g_marginStandardCombo = nullptr;
 HWND g_marginSnappyCombo = nullptr;
@@ -113,6 +115,52 @@ HWND addButton(HWND parent, int id, const wchar_t* text, int x, int y, int width
                                    GetModuleHandleW(nullptr), nullptr);
     setFont(control);
     return control;
+}
+
+constexpr wchar_t kRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+std::wstring executablePath() {
+    wchar_t path[MAX_PATH]{};
+    const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+    return length ? std::wstring(path, length) : std::wstring();
+}
+
+bool autoStartEnabled() {
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKey, 0, KEY_QUERY_VALUE, &key) !=
+        ERROR_SUCCESS) {
+        return false;
+    }
+    wchar_t value[2048]{};
+    DWORD size = sizeof(value);
+    DWORD type = 0;
+    const LSTATUS status =
+        RegQueryValueExW(key, L"LiveZoom", nullptr, &type,
+                         reinterpret_cast<BYTE*>(value), &size);
+    RegCloseKey(key);
+    if (status != ERROR_SUCCESS || type != REG_SZ) return false;
+    const std::wstring expected = L"\"" + executablePath() + L"\"";
+    return _wcsicmp(value, expected.c_str()) == 0;
+}
+
+bool setAutoStart(bool enabled) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, kRunKey, 0, nullptr, 0, KEY_SET_VALUE, nullptr,
+                        &key, nullptr) != ERROR_SUCCESS) {
+        return false;
+    }
+    LSTATUS status = ERROR_SUCCESS;
+    if (enabled) {
+        const std::wstring value = L"\"" + executablePath() + L"\"";
+        status = RegSetValueExW(key, L"LiveZoom", 0, REG_SZ,
+                                reinterpret_cast<const BYTE*>(value.c_str()),
+                                static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
+    } else {
+        status = RegDeleteValueW(key, L"LiveZoom");
+        if (status == ERROR_FILE_NOT_FOUND) status = ERROR_SUCCESS;
+    }
+    RegCloseKey(key);
+    return status == ERROR_SUCCESS;
 }
 
 int nearestZoomIndex(double zoom) {
@@ -209,6 +257,9 @@ void createControls(HWND dialog) {
         addCheck(dialog, kIdCustomAlways, L"始终使用自定义光标（非放大时）", 24, 268, 360, 24);
     SendMessageW(g_customAlwaysCheck, BM_SETCHECK,
                  g_settings->customCursorAlways ? BST_CHECKED : BST_UNCHECKED, 0);
+    g_autoStartCheck = addCheck(dialog, kIdAutoStart, L"开机启动 LiveZoom", 800, 208, 200, 24);
+    SendMessageW(g_autoStartCheck, BM_SETCHECK,
+                 autoStartEnabled() ? BST_CHECKED : BST_UNCHECKED, 0);
 
     addStatic(dialog, L"标注与点击", 420, 20, 200, 22);
 
@@ -339,6 +390,12 @@ void readControls() {
         SendMessageW(g_hideIdleCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->customCursorAlways =
         SendMessageW(g_customAlwaysCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+
+    const bool autoStart = SendMessageW(g_autoStartCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    if (!setAutoStart(autoStart)) {
+        MessageBoxW(g_dialog, L"无法修改开机启动项，请检查系统权限。", L"LiveZoom",
+                    MB_OK | MB_ICONWARNING);
+    }
 
     const int styleIndex = static_cast<int>(SendMessageW(g_inkStyleCombo, CB_GETCURSEL, 0, 0));
     switch (styleIndex) {

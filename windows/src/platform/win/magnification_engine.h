@@ -39,8 +39,10 @@ public:
     /// Asks the system to show the cursor again; safe to call repeatedly.
     void ensureCursorVisible();
     /// Used by the idle custom cursor overlay.
-    void hideSystemCursor() { hideHardwareCursor(true); }
-    void restoreSystemCursor() { hideHardwareCursor(false); }
+    void hideSystemCursor() { hideHardwareCursor(true, false); }
+    /// Hide only the normal arrow; text/resize/hand cursors stay untouched.
+    void hideSystemCursorArrowOnly() { hideHardwareCursor(true, true); }
+    void restoreSystemCursor() { hideHardwareCursor(false, false); }
     void touchCursorWatchdog() { lastAlive_ = GetTickCount64(); }
     [[nodiscard]] bool consumeWatchdogRestore() {
         return watchdogRestored_.exchange(false);
@@ -68,8 +70,8 @@ private:
     bool createHost(HMONITOR monitor);
     void destroyHost();
     void showHost();
-    void hideHardwareCursor(bool hide);
-    void blankSystemCursors();
+    void hideHardwareCursor(bool hide, bool arrowOnly = false);
+    void blankSystemCursors(bool arrowOnly);
     void cursorWatchdogLoop();
     void registerHostClass();
 
@@ -85,6 +87,7 @@ private:
     HWND overlay_ = nullptr;
     bool hardwareCursorHidden_ = false;
     std::atomic<bool> cursorBlanked_{false};
+    bool cursorBlankedAll_ = false;
     std::atomic<bool> watchdogRestored_{false};
     std::mutex cursorMutex_;
     std::thread cursorWatchdog_;

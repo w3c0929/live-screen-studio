@@ -29,6 +29,7 @@ target_link_libraries(livezoom_win PRIVATE
     dcomp
     shell32
     ole32
+    advapi32
 )
 
 if(MINGW)

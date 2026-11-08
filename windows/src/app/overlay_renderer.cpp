@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cwchar>
 #include <dwmapi.h>
 
 #include "arrow_head.h"
@@ -37,6 +38,29 @@ LRESULT CALLBACK OverlayRenderer::overlayProc(HWND hwnd, UINT message, WPARAM wP
             return HTTRANSPARENT;
         case WM_ERASEBKGND:
             return 1;
+        case WM_SETCURSOR: {
+            // A topmost click-through window still wins the cursor. Ask the real window
+            // below it for its cursor, so I-beam, hand and resize cursors keep working.
+            POINT point{};
+            GetCursorPos(&point);
+            HWND below = WindowFromPoint(point);
+            while (below) {
+                wchar_t className[64]{};
+                GetClassNameW(below, className, 64);
+                if (std::wcscmp(className, L"LiveZoomOverlayHost") != 0 &&
+                    std::wcscmp(className, L"LiveZoomMagnifierHost") != 0) {
+                    break;
+                }
+                below = GetWindow(below, GW_HWNDNEXT);
+            }
+            if (below) {
+                const LRESULT hit =
+                    SendMessageW(below, WM_NCHITTEST, 0, MAKELPARAM(point.x, point.y));
+                SendMessageW(below, WM_SETCURSOR, reinterpret_cast<WPARAM>(below),
+                             MAKELPARAM(static_cast<WORD>(hit), WM_MOUSEMOVE));
+            }
+            return TRUE;
+        }
         default:
             return DefWindowProcW(hwnd, message, wParam, lParam);
     }

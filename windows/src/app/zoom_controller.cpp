@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 #include "input_hook.h"
 #include "magnification_engine.h"
@@ -23,6 +25,45 @@ ZoomController::ZoomController(MagnificationEngine& engine, InputHook& input, Oc
 }
 
 ZoomController::~ZoomController() = default;
+
+namespace {
+
+/// True when the current cursor is the transparent arrow we installed for the idle custom
+/// cursor. Text, resize, hand and app-defined cursors have visible pixels and are left alone.
+bool isBlankCursor(HCURSOR cursor) {
+    if (!cursor) return false;
+    const HDC screen = GetDC(nullptr);
+    const HDC memory = CreateCompatibleDC(screen);
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = 64;
+    info.bmiHeader.biHeight = 64;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    const HBITMAP bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bitmap) {
+        DeleteDC(memory);
+        ReleaseDC(nullptr, screen);
+        return false;
+    }
+    const HGDIOBJ old = SelectObject(memory, bitmap);
+    std::memset(bits, 0, 64 * 64 * 4);
+    DrawIconEx(memory, 0, 0, cursor, 0, 0, 0, nullptr, DI_NORMAL);
+    bool blank = true;
+    const auto* pixels = static_cast<const uint32_t*>(bits);
+    for (int i = 0; i < 64 * 64 && blank; ++i) {
+        if (pixels[i] != 0) blank = false;
+    }
+    SelectObject(memory, old);
+    DeleteObject(bitmap);
+    DeleteDC(memory);
+    ReleaseDC(nullptr, screen);
+    return blank;
+}
+
+}  // namespace
 
 double ZoomController::nowSeconds() const {
     LARGE_INTEGER value{};
@@ -153,6 +194,8 @@ void ZoomController::hideIdleCursor(bool restoreHardware) {
     idleMonitor_ = nullptr;
     idleMotion_.reset();
     idleCursorActive_ = false;
+    idleLastCursor_ = nullptr;
+    idleCursorIsBlank_ = false;
     lastIdleRender_ = 0;
     if (restoreHardware && idleHardwareHidden_) {
         engine_.restoreSystemCursor();
@@ -206,9 +249,11 @@ void ZoomController::updateIdleCursor(double now) {
         idleMotion_->jump(local, now);
         lastIdleRender_ = 0;
         idleCursorActive_ = true;
+        idleLastCursor_ = nullptr;
+        idleCursorIsBlank_ = false;
         std::printf("[livezoom] idle custom cursor on\n");
         if (!idleHardwareHidden_) {
-            engine_.hideSystemCursor();
+            engine_.hideSystemCursorArrowOnly();
             idleHardwareHidden_ = true;
         }
     }
@@ -221,15 +266,29 @@ void ZoomController::updateIdleCursor(double now) {
                              (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 ||
                              (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
     if (idleMotion_) idleMotion_->update(local, buttonsDown, now, dt);
+
+    CURSORINFO cursorInfo{};
+    cursorInfo.cbSize = sizeof(cursorInfo);
+    HCURSOR cursorHandle = nullptr;
+    if (GetCursorInfo(&cursorInfo)) cursorHandle = cursorInfo.hCursor;
+    if (cursorHandle != idleLastCursor_) {
+        idleLastCursor_ = cursorHandle;
+        idleCursorIsBlank_ = isBlankCursor(cursorHandle);
+        if (idleCursorIsBlank_ && idleMotion_) idleMotion_->jump(local, now);
+    }
+
+    // Only replace the normal arrow. Text, resize, hand and custom app cursors stay visible
+    // with their native image, so the user keeps the usual mouse cues.
+    const double opacity =
+        idleCursorIsBlank_ ? (idleMotion_ ? idleMotion_->opacity : 1.0) : 0.0;
     idleOverlay_->setCursorStyle(settings_.cursorStyle);
-    idleOverlay_->setCursor(local, settings_.cursorSize,
-                            idleMotion_ ? idleMotion_->opacity : 1.0);
+    idleOverlay_->setCursor(local, settings_.cursorSize, opacity);
     idleOverlay_->render(now);
     lastIdleRender_ = now;
 
     engine_.touchCursorWatchdog();
     if (engine_.consumeWatchdogRestore()) {
-        engine_.hideSystemCursor();
+        engine_.hideSystemCursorArrowOnly();
         idleHardwareHidden_ = true;
     }
 }
