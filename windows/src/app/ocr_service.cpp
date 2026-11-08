@@ -32,7 +32,7 @@ void OcrService::recognize(const RECT& captureRect, Callback callback) {
     if (!available() || !callback) return;
     {
         std::lock_guard lock(mutex_);
-        if (busy_ || pending_) return;
+        if (stop_ || busy_ || pending_) return;
         pending_ = Request{captureRect, std::move(callback)};
     }
     cv_.notify_one();

@@ -65,6 +65,7 @@ struct Settings {
     CursorStyle cursorStyle = CursorStyle::Classic;
     bool smoothCursor = false;
     bool hideIdleCursor = false;
+    bool customCursorAlways = false;
     double idleDelay = 3.0;
 
     InkStyle inkStyle = InkStyle::Marker;

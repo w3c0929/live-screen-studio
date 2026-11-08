@@ -42,6 +42,8 @@ public:
 private:
     void startZoom();
     void finish();
+    void updateIdleCursor(double now);
+    void hideIdleCursor(bool restoreHardware);
     [[nodiscard]] double nowSeconds() const;
     [[nodiscard]] lz::Rect shownViewport() const;
     [[nodiscard]] lz::Point contentPoint(int x, int y) const;
@@ -51,6 +53,14 @@ private:
     OcrService& ocr_;
     lz::Settings& settings_;
     std::unique_ptr<OverlayRenderer> overlay_;
+    std::unique_ptr<OverlayRenderer> idleOverlay_;
+    std::optional<lz::CursorMotion> idleMotion_;
+    HMONITOR idleMonitor_ = nullptr;
+    RECT idleMonitorRect_{};
+    lz::Size idleDisplay_{};
+    bool idleCursorActive_ = false;
+    bool idleHardwareHidden_ = false;
+    double lastIdleRender_ = 0;
 
     std::optional<lz::ZoomCamera> camera_;
     std::optional<lz::CursorMotion> cursorMotion_;

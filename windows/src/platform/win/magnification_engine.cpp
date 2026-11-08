@@ -82,6 +82,7 @@ bool MagnificationEngine::initialize(std::string& error) {
         error = "MagInitialize failed (error " + std::to_string(GetLastError()) + ")";
         return false;
     }
+    initialized_ = true;
     registerHostClass();
     lastAlive_ = GetTickCount64();
     watchStop_ = false;
@@ -90,19 +91,28 @@ bool MagnificationEngine::initialize(std::string& error) {
 }
 
 void MagnificationEngine::shutdown() {
-    hide();
-    hideHardwareCursor(false);
-    destroyHost();
+    if (!api_.module && !initialized_) return;
+    if (initialized_) {
+        hide();
+        hideHardwareCursor(false);
+        destroyHost();
+    }
     watchStop_ = true;
     if (cursorWatchdog_.joinable()) cursorWatchdog_.join();
-    if (api_.uninitialize) {
+    if (initialized_ && api_.uninitialize) {
         api_.uninitialize();
-        api_.uninitialize = nullptr;
     }
     if (api_.module) {
         FreeLibrary(api_.module);
         api_.module = nullptr;
     }
+    api_.initialize = nullptr;
+    api_.uninitialize = nullptr;
+    api_.setWindowTransform = nullptr;
+    api_.setWindowFilterList = nullptr;
+    api_.showSystemCursor = nullptr;
+    api_.setLensUseBitmapSmoothing = nullptr;
+    initialized_ = false;
 }
 
 void MagnificationEngine::registerHostClass() {
@@ -177,7 +187,9 @@ bool MagnificationEngine::showForMonitor(HMONITOR monitor) {
         showHost();
         return true;
     }
-    hide();
+    // Only restore the system cursor if the magnifier was actually visible. When the idle
+    // custom cursor owns the pointer, the host is created while the cursor is already hidden.
+    if (visible_) hide();
     destroyHost();
     if (!createHost(monitor)) return false;
     showHost();
@@ -338,6 +350,7 @@ void MagnificationEngine::cursorWatchdogLoop() {
         if (GetTickCount64() - lastAlive_ <= 2000) continue;
         std::printf("[livezoom] cursor watchdog: restoring the pointer\n");
         ensureCursorVisible();
+        watchdogRestored_ = true;
     }
 }
 

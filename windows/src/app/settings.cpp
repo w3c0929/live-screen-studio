@@ -204,6 +204,7 @@ bool Settings::load() {
     cursorStyle = cursorStyleFromName(readString(file, L"cursorStyle", L"classic"));
     smoothCursor = readBool(file, L"smoothCursor", smoothCursor);
     hideIdleCursor = readBool(file, L"hideIdleCursor", hideIdleCursor);
+    customCursorAlways = readBool(file, L"customCursorAlways", customCursorAlways);
     idleDelay = std::clamp(readDouble(file, L"idleDelay", idleDelay), 1.0, 10.0);
 
     const std::wstring followName = readString(file, L"follow", L"calm");
@@ -257,6 +258,7 @@ bool Settings::save() const {
     writeString(file, L"cursorStyle", cursorStyleName(cursorStyle));
     writeString(file, L"smoothCursor", smoothCursor ? L"1" : L"0");
     writeString(file, L"hideIdleCursor", hideIdleCursor ? L"1" : L"0");
+    writeString(file, L"customCursorAlways", customCursorAlways ? L"1" : L"0");
     writeString(file, L"idleDelay", std::to_wstring(idleDelay));
     const wchar_t* followName = L"calm";
     if (follow == FollowStyle::Standard) followName = L"standard";

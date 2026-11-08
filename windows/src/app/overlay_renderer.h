@@ -40,11 +40,16 @@ public:
     void cancelStroke();
     void undo();
     void clear();
-    [[nodiscard]] bool hasContent() const { return !annotations_.empty(); }
+    [[nodiscard]] bool hasContent() const {
+        return !annotations_.empty() || spotlightActive_;
+    }
 
     void addHighlight(HighlightKind kind, lz::Rect line);
     void addHighlight(HighlightKind kind, lz::Rect line, double zoom);
     bool removeSpotlight();
+    /// Cursor-centred spotlight: dims everything outside a soft circle.
+    void toggleSpotlight();
+    void setSpotlightCenter(lz::Point screenLocal, double radius);
     void addClick(lz::Point screenLocal, double now);
     /// Screen-local position of the drawn cursor, scaled with the zoom.
     void setCursor(lz::Point position, double scale, double opacity);
@@ -78,6 +83,7 @@ private:
     void drawHighlight(const lz::Annotation& annotation);
     void drawStyledGeometry(ID2D1Geometry* geometry, const lz::InkLook& look, double width,
                             lz::InkStyle style);
+    void drawSpotlight();
     void drawClicks(double now);
     void drawCursor();
     bool buildCursorPath();
@@ -100,6 +106,10 @@ private:
     Microsoft::WRL::ComPtr<ID2D1StrokeStyle> roundStyle_;
     Microsoft::WRL::ComPtr<ID2D1StrokeStyle> buttStyle_;
     Microsoft::WRL::ComPtr<ID2D1StrokeStyle> dashStyle_;
+    Microsoft::WRL::ComPtr<ID2D1RadialGradientBrush> spotlightBrush_;
+    bool spotlightActive_ = false;
+    lz::Point spotlightCenter_{};
+    double spotlightRadius_ = 0;
     Microsoft::WRL::ComPtr<ID2D1PathGeometry> cursorPath_;
     lz::Point cursorPosition_{};
     double cursorScale_ = 1;

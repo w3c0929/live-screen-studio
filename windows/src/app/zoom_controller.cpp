@@ -16,7 +16,8 @@ ZoomController::ZoomController(MagnificationEngine& engine, InputHook& input, Oc
       input_(input),
       ocr_(ocr),
       settings_(settings),
-      overlay_(std::make_unique<OverlayRenderer>()) {
+      overlay_(std::make_unique<OverlayRenderer>()),
+      idleOverlay_(std::make_unique<OverlayRenderer>()) {
     QueryPerformanceFrequency(&frequency_);
     QueryPerformanceCounter(&start_);
 }
@@ -51,6 +52,7 @@ lz::Point ZoomController::contentPoint(int x, int y) const {
 
 void ZoomController::startZoom() {
     ++session_;
+    hideIdleCursor(false);
     POINT cursor{};
     GetCursorPos(&cursor);
     const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
@@ -121,6 +123,7 @@ void ZoomController::finish() {
     }
     engine_.setOverlayWindow(nullptr);
     engine_.hide();
+    idleHardwareHidden_ = false;
     // Some drivers apply the magnifier's cursor hide asynchronously. Retry after the zoom-out
     // animation so the pointer is back without requiring Ctrl+Alt+Del.
     cursorRestoreAt_ = nowSeconds() + 0.15;
@@ -132,10 +135,103 @@ void ZoomController::finish() {
     input_.setCursorBounds(std::nullopt);
     camera_.reset();
     std::printf("[livezoom] zoom off\n");
+    if (settings_.enabled && settings_.customCursorAlways) {
+        updateIdleCursor(nowSeconds());
+    }
 }
 
 void ZoomController::reset() {
     finish();
+    hideIdleCursor(true);
+}
+
+void ZoomController::hideIdleCursor(bool restoreHardware) {
+    if (idleOverlay_ && idleOverlay_->visible()) idleOverlay_->hide();
+    if (idleCursorActive_) {
+        std::printf("[livezoom] idle custom cursor off\n");
+    }
+    idleMonitor_ = nullptr;
+    idleMotion_.reset();
+    idleCursorActive_ = false;
+    lastIdleRender_ = 0;
+    if (restoreHardware && idleHardwareHidden_) {
+        engine_.restoreSystemCursor();
+        idleHardwareHidden_ = false;
+    }
+}
+
+void ZoomController::updateIdleCursor(double now) {
+    if (!settings_.enabled || !settings_.customCursorAlways) {
+        hideIdleCursor(true);
+        return;
+    }
+    if (!idleOverlay_) return;
+
+    // The idle cursor owns the pointer; cancel the zoom-out cursor restore retries.
+    cursorRestoreAt_ = 0;
+    cursorRestoreTries_ = 0;
+
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO info{};
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfoW(monitor, &info)) {
+        hideIdleCursor(true);
+        return;
+    }
+
+    if (idleMonitor_ != monitor || !idleOverlay_->visible()) {
+        idleOverlay_->hide();
+        idleMonitor_ = monitor;
+        idleMonitorRect_ = info.rcMonitor;
+        idleDisplay_ = {static_cast<lz::Real>(idleMonitorRect_.right - idleMonitorRect_.left),
+                        static_cast<lz::Real>(idleMonitorRect_.bottom - idleMonitorRect_.top)};
+        if (!idleOverlay_->showForMonitor(monitor)) {
+            idleMonitor_ = nullptr;
+            hideIdleCursor(true);
+            return;
+        }
+        idleOverlay_->setMapping({0, 0}, 1.0, idleDisplay_);
+        idleOverlay_->setCursorStyle(settings_.cursorStyle);
+        idleOverlay_->setInk(settings_.inkLook());
+        idleOverlay_->setClickEffect(settings_.clickEffect, settings_.clickRgba());
+        const lz::Point local{cursor.x - idleMonitorRect_.left,
+                              cursor.y - idleMonitorRect_.top};
+        idleMotion_.emplace(local, now);
+        idleMotion_->smoothTime = settings_.smoothCursor ? 0.06 : 0.0;
+        idleMotion_->idleDelay = settings_.hideIdleCursor
+                                     ? std::optional<double>(settings_.idleDelay)
+                                     : std::nullopt;
+        idleMotion_->jump(local, now);
+        lastIdleRender_ = 0;
+        idleCursorActive_ = true;
+        std::printf("[livezoom] idle custom cursor on\n");
+        if (!idleHardwareHidden_) {
+            engine_.hideSystemCursor();
+            idleHardwareHidden_ = true;
+        }
+    }
+
+    const lz::Point local{cursor.x - idleMonitorRect_.left,
+                          cursor.y - idleMonitorRect_.top};
+    double dt = lastIdleRender_ > 0 ? now - lastIdleRender_ : 1.0 / 60.0;
+    dt = std::clamp(dt, 1.0 / 240.0, 1.0 / 20.0);
+    const bool buttonsDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
+                             (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 ||
+                             (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+    if (idleMotion_) idleMotion_->update(local, buttonsDown, now, dt);
+    idleOverlay_->setCursorStyle(settings_.cursorStyle);
+    idleOverlay_->setCursor(local, settings_.cursorSize,
+                            idleMotion_ ? idleMotion_->opacity : 1.0);
+    idleOverlay_->render(now);
+    lastIdleRender_ = now;
+
+    engine_.touchCursorWatchdog();
+    if (engine_.consumeWatchdogRestore()) {
+        engine_.hideSystemCursor();
+        idleHardwareHidden_ = true;
+    }
 }
 
 void ZoomController::toggle() {
@@ -176,7 +272,10 @@ void ZoomController::tick() {
         }
     }
 
-    if (!active_ || !camera_) return;
+    if (!active_ || !camera_) {
+        updateIdleCursor(now);
+        return;
+    }
 
     const double dt = std::clamp(now - lastTick_, 1.0 / 240.0, 1.0 / 20.0);
     lastTick_ = now;
@@ -227,8 +326,11 @@ void ZoomController::tick() {
         }
         const lz::Point drawn = strokeDrawing_ ? local : cursorMotion_->position;
         const double zoom = camera_->zoom();
-        overlay_->setCursor({(drawn.x - viewport.x) * zoom, (drawn.y - viewport.y) * zoom},
-                            zoom * settings_.cursorSize, cursorMotion_->opacity);
+        const lz::Point shownCursor{(drawn.x - viewport.x) * zoom,
+                                    (drawn.y - viewport.y) * zoom};
+        overlay_->setCursor(shownCursor, zoom * settings_.cursorSize,
+                            cursorMotion_->opacity);
+        overlay_->setSpotlightCenter(shownCursor, 90.0 * zoom);
         overlay_->render(now);
     }
     engine_.setViewport({viewport.x + static_cast<lz::Real>(monitorRect_.left),
@@ -296,17 +398,17 @@ void ZoomController::clearStrokes() {
 
 void ZoomController::highlight(int kindIndex) {
     if (!active_ || !overlay_ || !overlay_->visible()) return;
+    if (kindIndex == 3) {
+        overlay_->toggleSpotlight();
+        input_.setHasStrokes(overlay_->hasContent());
+        return;
+    }
     lz::HighlightKind kind = lz::HighlightKind::Box;
     switch (kindIndex) {
         case 0: kind = lz::HighlightKind::Box; break;
         case 1: kind = lz::HighlightKind::Underline; break;
         case 2: kind = lz::HighlightKind::Fill; break;
-        case 3: kind = lz::HighlightKind::Spotlight; break;
         default: return;
-    }
-    if (kind == lz::HighlightKind::Spotlight && overlay_->removeSpotlight()) {
-        input_.setHasStrokes(overlay_->hasContent());
-        return;
     }
     if (!ocr_.available()) {
         std::printf("[livezoom] OCR helper not found\n");
@@ -384,6 +486,18 @@ void ZoomController::reloadSettings() {
         cursorMotion_->idleDelay = settings_.hideIdleCursor
                                        ? std::optional<double>(settings_.idleDelay)
                                        : std::nullopt;
+    }
+    if (idleOverlay_ && idleOverlay_->visible()) {
+        idleOverlay_->setCursorStyle(settings_.cursorStyle);
+        idleOverlay_->setInk(settings_.inkLook());
+        idleOverlay_->setClickEffect(settings_.clickEffect, settings_.clickRgba());
+    }
+    if (!active_) {
+        if (!settings_.enabled || !settings_.customCursorAlways) {
+            hideIdleCursor(true);
+        } else {
+            updateIdleCursor(nowSeconds());
+        }
     }
     input_.setDrawingArmed(settings_.drawWhileZoomed && overlay_ && overlay_->visible());
 }

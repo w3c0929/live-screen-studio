@@ -174,6 +174,21 @@ bool OverlayRenderer::createDevice() {
     hr = d2dFactory_->CreateStrokeStyle(dashProperties, dashes, 2, &dashStyle_);
     if (FAILED(hr)) return false;
 
+    const D2D1_GRADIENT_STOP spotlightStops[4] = {
+        {0.0f, D2D1::ColorF(0, 0, 0, 0.0f)},
+        {0.86f, D2D1::ColorF(0, 0, 0, 0.0f)},
+        {0.94f, D2D1::ColorF(0, 0, 0, 0.52f)},
+        {1.0f, D2D1::ColorF(0, 0, 0, 0.52f)},
+    };
+    ComPtr<ID2D1GradientStopCollection> spotlightStopsCollection;
+    if (SUCCEEDED(d2dContext_->CreateGradientStopCollection(
+            spotlightStops, 4, &spotlightStopsCollection))) {
+        d2dContext_->CreateRadialGradientBrush(
+            D2D1::RadialGradientBrushProperties(D2D1::Point2F(0, 0),
+                                                D2D1::Point2F(0, 0), 1, 1),
+            spotlightStopsCollection.Get(), &spotlightBrush_);
+    }
+
     hr = DCompositionCreateDevice(dxgiDevice.Get(), IID_PPV_ARGS(&dcompDevice_));
     if (FAILED(hr)) return false;
     hr = dcompDevice_->CreateTargetForHwnd(hwnd_, TRUE, &dcompTarget_);
@@ -197,6 +212,7 @@ void OverlayRenderer::destroyDevice() {
     roundStyle_.Reset();
     buttStyle_.Reset();
     dashStyle_.Reset();
+    spotlightBrush_.Reset();
     cursorPath_.Reset();
     d2dContext_.Reset();
     d2dDevice_.Reset();
@@ -292,14 +308,18 @@ void OverlayRenderer::cancelStroke() {
 }
 
 void OverlayRenderer::undo() {
-    if (annotations_.empty()) return;
-    annotations_.pop_back();
+    if (!annotations_.empty()) {
+        annotations_.pop_back();
+    } else if (spotlightActive_) {
+        spotlightActive_ = false;
+    }
     strokeInProgress_ = false;
 }
 
 void OverlayRenderer::clear() {
     annotations_.clear();
     clicks_.clear();
+    spotlightActive_ = false;
     strokeInProgress_ = false;
 }
 
@@ -323,6 +343,15 @@ bool OverlayRenderer::removeSpotlight() {
     if (it == annotations_.end()) return false;
     annotations_.erase(it);
     return true;
+}
+
+void OverlayRenderer::toggleSpotlight() {
+    spotlightActive_ = !spotlightActive_;
+}
+
+void OverlayRenderer::setSpotlightCenter(lz::Point screenLocal, double radius) {
+    spotlightCenter_ = screenLocal;
+    spotlightRadius_ = radius;
 }
 
 void OverlayRenderer::addClick(lz::Point screenLocal, double now) {
@@ -613,6 +642,20 @@ void OverlayRenderer::drawAnnotation(const lz::Annotation& annotation) {
     }
 }
 
+void OverlayRenderer::drawSpotlight() {
+    if (!spotlightActive_ || !spotlightBrush_ || !d2dContext_) return;
+    if (spotlightRadius_ <= 0) return;
+    const float width = static_cast<float>(
+        display_.width > 0 ? display_.width : (monitorRect_.right - monitorRect_.left));
+    const float height = static_cast<float>(
+        display_.height > 0 ? display_.height : (monitorRect_.bottom - monitorRect_.top));
+    spotlightBrush_->SetCenter(D2D1::Point2F(static_cast<float>(spotlightCenter_.x),
+                                             static_cast<float>(spotlightCenter_.y)));
+    spotlightBrush_->SetRadiusX(static_cast<float>(spotlightRadius_));
+    spotlightBrush_->SetRadiusY(static_cast<float>(spotlightRadius_));
+    d2dContext_->FillRectangle(D2D1::RectF(0, 0, width, height), spotlightBrush_.Get());
+}
+
 void OverlayRenderer::drawClicks(double now) {
     for (const ClickMark& mark : clicks_) {
         const auto look = lz::ClickEffectMath::appearance(mark.effect, now - mark.start);
@@ -655,6 +698,7 @@ void OverlayRenderer::render(double now) {
     }
 
     d2dContext_->SetTransform(D2D1::Matrix3x2F::Identity());
+    drawSpotlight();
     drawClicks(now);
     drawCursor();
 

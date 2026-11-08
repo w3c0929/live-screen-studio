@@ -4,6 +4,7 @@
 
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -78,8 +79,10 @@ private:
 
     HWND target_ = nullptr;
     std::thread thread_;
-    DWORD threadId_ = 0;
-    HANDLE ready_ = nullptr;
+    std::atomic<DWORD> threadId_{0};
+    std::mutex readyMutex_;
+    std::condition_variable readyCv_;
+    bool ready_ = false;
     std::atomic<bool> running_{false};
     std::atomic<bool> installed_{false};
     std::atomic<bool> enabled_{true};

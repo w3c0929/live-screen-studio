@@ -1,5 +1,6 @@
 #include "input_hook.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <new>
@@ -41,25 +42,35 @@ bool InputHook::start(HWND target) {
     target_ = target;
     running_ = true;
     installed_ = false;
-    ready_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (!ready_) return false;
+    {
+        std::lock_guard lock(readyMutex_);
+        ready_ = false;
+    }
     thread_ = std::thread(&InputHook::threadMain, this);
-    WaitForSingleObject(ready_, 3000);
-    CloseHandle(ready_);
-    ready_ = nullptr;
+
+    std::unique_lock lock(readyMutex_);
+    const bool signaled = readyCv_.wait_for(
+        lock, std::chrono::seconds(3), [this] { return ready_; });
+    lock.unlock();
+    if (!signaled) {
+        running_ = false;
+        const DWORD id = threadId_.load();
+        if (id != 0) PostThreadMessageW(id, WM_QUIT, 0, 0);
+        if (thread_.joinable()) thread_.join();
+        current_ = nullptr;
+        return false;
+    }
     return installed_;
 }
 
 void InputHook::stop() {
     running_ = false;
-    if (threadId_ != 0) {
-        PostThreadMessageW(threadId_, WM_QUIT, 0, 0);
+    const DWORD id = threadId_.load();
+    if (id != 0) {
+        PostThreadMessageW(id, WM_QUIT, 0, 0);
     }
     if (thread_.joinable()) thread_.join();
-    if (ready_) {
-        CloseHandle(ready_);
-        ready_ = nullptr;
-    }
+    threadId_ = 0;
     ClipCursor(nullptr);
     current_ = nullptr;
 }
@@ -85,20 +96,19 @@ void InputHook::threadMain() {
     installed_ = mouseHook_ && keyboardHook_;
     if (!installed_) {
         std::printf("[livezoom] SetWindowsHookEx failed: %lu\n", GetLastError());
-        if (mouseHook_) UnhookWindowsHookEx(mouseHook_);
-        if (keyboardHook_) UnhookWindowsHookEx(keyboardHook_);
-        mouseHook_ = nullptr;
-        keyboardHook_ = nullptr;
-        if (ready_) SetEvent(ready_);
-        threadId_ = 0;
-        return;
     }
-    if (ready_) SetEvent(ready_);
+    {
+        std::lock_guard lock(readyMutex_);
+        ready_ = true;
+    }
+    readyCv_.notify_one();
 
-    MSG message{};
-    while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (message.message == kApplyCursorBounds) {
-            applyCursorBounds();
+    if (installed_ && running_) {
+        MSG message{};
+        while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+            if (message.message == kApplyCursorBounds) {
+                applyCursorBounds();
+            }
         }
     }
 
@@ -115,8 +125,9 @@ void InputHook::setCursorBounds(std::optional<lz::Rect> bounds) {
         std::lock_guard lock(boundsMutex_);
         pendingBounds_ = bounds;
     }
-    if (threadId_ != 0) {
-        PostThreadMessageW(threadId_, kApplyCursorBounds, 0, 0);
+    const DWORD id = threadId_.load();
+    if (id != 0) {
+        PostThreadMessageW(id, kApplyCursorBounds, 0, 0);
     } else {
         applyCursorBounds();
     }

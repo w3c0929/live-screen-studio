@@ -38,6 +38,13 @@ public:
     void setOverlayWindow(HWND overlay);
     /// Asks the system to show the cursor again; safe to call repeatedly.
     void ensureCursorVisible();
+    /// Used by the idle custom cursor overlay.
+    void hideSystemCursor() { hideHardwareCursor(true); }
+    void restoreSystemCursor() { hideHardwareCursor(false); }
+    void touchCursorWatchdog() { lastAlive_ = GetTickCount64(); }
+    [[nodiscard]] bool consumeWatchdogRestore() {
+        return watchdogRestored_.exchange(false);
+    }
     /// Re-enumerates OBS windows (it can start or move while LiveZoom is running).
     void refreshExcludedWindows();
 
@@ -67,6 +74,7 @@ private:
     void registerHostClass();
 
     Api api_;
+    bool initialized_ = false;
     HWND host_ = nullptr;
     HWND mag_ = nullptr;
     HMONITOR monitor_ = nullptr;
@@ -77,6 +85,7 @@ private:
     HWND overlay_ = nullptr;
     bool hardwareCursorHidden_ = false;
     std::atomic<bool> cursorBlanked_{false};
+    std::atomic<bool> watchdogRestored_{false};
     std::mutex cursorMutex_;
     std::thread cursorWatchdog_;
     std::atomic<bool> watchStop_{false};

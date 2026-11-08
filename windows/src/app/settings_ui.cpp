@@ -27,6 +27,7 @@ constexpr int kIdMarginCalm = 1015;
 constexpr int kIdMarginStandard = 1016;
 constexpr int kIdMarginSnappy = 1017;
 constexpr int kIdHotkeyOpen = 1018;
+constexpr int kIdCustomAlways = 1019;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 constexpr int kIdRecordBase = 3001;
@@ -57,6 +58,7 @@ HWND g_cursorSizeCombo = nullptr;
 HWND g_cursorStyleCombo = nullptr;
 HWND g_smoothCursorCheck = nullptr;
 HWND g_hideIdleCheck = nullptr;
+HWND g_customAlwaysCheck = nullptr;
 HWND g_marginCalmCombo = nullptr;
 HWND g_marginStandardCombo = nullptr;
 HWND g_marginSnappyCombo = nullptr;
@@ -203,6 +205,10 @@ void createControls(HWND dialog) {
     g_hideIdleCheck = addCheck(dialog, kIdHideIdle, L"静止后隐藏光标（3 秒）", 24, 236, 300, 24);
     SendMessageW(g_hideIdleCheck, BM_SETCHECK,
                  g_settings->hideIdleCursor ? BST_CHECKED : BST_UNCHECKED, 0);
+    g_customAlwaysCheck =
+        addCheck(dialog, kIdCustomAlways, L"始终使用自定义光标（非放大时）", 24, 268, 360, 24);
+    SendMessageW(g_customAlwaysCheck, BM_SETCHECK,
+                 g_settings->customCursorAlways ? BST_CHECKED : BST_UNCHECKED, 0);
 
     addStatic(dialog, L"标注与点击", 420, 20, 200, 22);
 
@@ -303,8 +309,9 @@ void createControls(HWND dialog) {
               L"中键：放大/缩回    按住中键滚动：调倍\n"
               L"放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
               L"右键：撤销    Esc：清除笔迹\n"
-              L"高亮：默认 Ctrl+Shift+1 框住 / 2 划线 / 3 荧光 / 4 聚光灯（可自定义）\n"
-              L"跟随边缘：百分比越小，越靠近屏幕边缘才移动；默认 6% / 4% / 2%",
+              L"高亮：默认 Ctrl+Shift+1 框住 / 2 划线 / 3 荧光\n"
+              L"      Ctrl+Shift+4 光标聚光灯（可自定义快捷键）\n"
+              L"跟随边缘：百分比越小，越靠近屏幕边缘才移动",
               24, 336, 1000, 120);
 
     addButton(dialog, kIdOk, L"确定", 860, 480, 86, 30);
@@ -330,6 +337,8 @@ void readControls() {
         SendMessageW(g_smoothCursorCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->hideIdleCursor =
         SendMessageW(g_hideIdleCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings->customCursorAlways =
+        SendMessageW(g_customAlwaysCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     const int styleIndex = static_cast<int>(SendMessageW(g_inkStyleCombo, CB_GETCURSEL, 0, 0));
     switch (styleIndex) {
