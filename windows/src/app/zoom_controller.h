@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "camera.h"
+#include "cursor_motion.h"
 #include "settings.h"
 
 class MagnificationEngine;
@@ -47,6 +48,7 @@ private:
     std::unique_ptr<OverlayRenderer> overlay_;
 
     std::optional<lz::ZoomCamera> camera_;
+    std::optional<lz::CursorMotion> cursorMotion_;
     HMONITOR monitor_ = nullptr;
     RECT monitorRect_{};
     lz::Size display_{};

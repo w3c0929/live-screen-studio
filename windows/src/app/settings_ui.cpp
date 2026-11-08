@@ -20,6 +20,9 @@ constexpr int kIdInkWidth = 1008;
 constexpr int kIdClickEffect = 1009;
 constexpr int kIdClickColor = 1010;
 constexpr int kIdCursorSize = 1011;
+constexpr int kIdCursorStyle = 1012;
+constexpr int kIdSmoothCursor = 1013;
+constexpr int kIdHideIdle = 1014;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 
@@ -43,6 +46,9 @@ HWND g_inkWidthCombo = nullptr;
 HWND g_clickEffectCombo = nullptr;
 HWND g_clickColorCombo = nullptr;
 HWND g_cursorSizeCombo = nullptr;
+HWND g_cursorStyleCombo = nullptr;
+HWND g_smoothCursorCheck = nullptr;
+HWND g_hideIdleCheck = nullptr;
 lz::Settings* g_settings = nullptr;
 bool g_done = false;
 
@@ -159,6 +165,13 @@ void createControls(HWND dialog) {
     g_obsCheck = addCheck(dialog, kIdObs, L"排除 OBS 窗口", 24, 172, 300, 24);
     SendMessageW(g_obsCheck, BM_SETCHECK, g_settings->excludeObs ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    g_smoothCursorCheck = addCheck(dialog, kIdSmoothCursor, L"光标平滑", 24, 204, 300, 24);
+    SendMessageW(g_smoothCursorCheck, BM_SETCHECK,
+                 g_settings->smoothCursor ? BST_CHECKED : BST_UNCHECKED, 0);
+    g_hideIdleCheck = addCheck(dialog, kIdHideIdle, L"静止后隐藏光标（3 秒）", 24, 236, 300, 24);
+    SendMessageW(g_hideIdleCheck, BM_SETCHECK,
+                 g_settings->hideIdleCursor ? BST_CHECKED : BST_UNCHECKED, 0);
+
     addStatic(dialog, L"标注与点击", 420, 20, 200, 22);
 
     addStatic(dialog, L"笔迹样式", 420, 56, 110, 22);
@@ -226,16 +239,29 @@ void createControls(HWND dialog) {
     SendMessageW(g_cursorSizeCombo, CB_SETCURSEL,
                  nearestCursorSizeIndex(g_settings->cursorSize), 0);
 
+    addStatic(dialog, L"光标样式", 420, 272, 110, 22);
+    g_cursorStyleCombo = addCombo(dialog, kIdCursorStyle, 540, 268, 150, 220);
+    SendMessageW(g_cursorStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"经典黑"));
+    SendMessageW(g_cursorStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"经典白"));
+    SendMessageW(g_cursorStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"海蓝"));
+    SendMessageW(g_cursorStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"日落"));
+    SendMessageW(g_cursorStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"薄荷"));
+    SendMessageW(g_cursorStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"圆点"));
+    SendMessageW(g_cursorStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"聚光"));
+    int cursorStyleIndex = static_cast<int>(g_settings->cursorStyle) - 1;
+    if (cursorStyleIndex < 0 || cursorStyleIndex > 6) cursorStyleIndex = 0;
+    SendMessageW(g_cursorStyleCombo, CB_SETCURSEL, cursorStyleIndex, 0);
+
     addStatic(dialog,
               L"中键：放大/缩回    按住中键滚动：调倍\n"
               L"放大后左键拖动：画线    Shift：直线\n"
               L"Ctrl+左键拖动：正常拖拽    右键：撤销\n"
               L"Esc：清除笔迹\n"
               L"跟随速度越灵敏，画布越晚开始移动",
-              24, 220, 370, 100);
+              24, 264, 370, 92);
 
-    addButton(dialog, kIdOk, L"确定", 590, 330, 86, 30);
-    addButton(dialog, kIdCancel, L"取消", 686, 330, 86, 30);
+    addButton(dialog, kIdOk, L"确定", 590, 370, 86, 30);
+    addButton(dialog, kIdCancel, L"取消", 686, 370, 86, 30);
 }
 
 void readControls() {
@@ -253,6 +279,10 @@ void readControls() {
         SendMessageW(g_smoothCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->excludeObs =
         SendMessageW(g_obsCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings->smoothCursor =
+        SendMessageW(g_smoothCursorCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings->hideIdleCursor =
+        SendMessageW(g_hideIdleCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     const int styleIndex = static_cast<int>(SendMessageW(g_inkStyleCombo, CB_GETCURSEL, 0, 0));
     switch (styleIndex) {
@@ -293,6 +323,13 @@ void readControls() {
         static_cast<int>(SendMessageW(g_cursorSizeCombo, CB_GETCURSEL, 0, 0));
     if (cursorSizeIndex >= 0 && cursorSizeIndex < kCursorSizeCount) {
         g_settings->cursorSize = kCursorSizes[cursorSizeIndex];
+    }
+
+    const int cursorStyleIndex =
+        static_cast<int>(SendMessageW(g_cursorStyleCombo, CB_GETCURSEL, 0, 0));
+    if (cursorStyleIndex >= 0 && cursorStyleIndex <= 6) {
+        g_settings->cursorStyle =
+            static_cast<lz::CursorStyle>(cursorStyleIndex + 1);
     }
 }
 
@@ -341,7 +378,7 @@ void showSettingsDialog(HWND owner, lz::Settings& settings) {
     RegisterClassExW(&windowClass);
 
     const int width = 780;
-    const int height = 400;
+    const int height = 440;
     const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 

@@ -43,6 +43,11 @@ struct Settings {
     bool blankSystemCursor = false;
 
     double cursorSize = 1.2;
+    CursorStyle cursorStyle = CursorStyle::Classic;
+    bool smoothCursor = false;
+    bool hideIdleCursor = false;
+    double idleDelay = 3.0;
+
     InkStyle inkStyle = InkStyle::Marker;
     InkPalette inkColor = InkPalette::Red;
     double strokeWidth = 5.0;

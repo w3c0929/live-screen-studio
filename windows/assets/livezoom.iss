@@ -1,5 +1,5 @@
 #define AppName "LiveZoom"
-#define AppVersion "0.4.0"
+#define AppVersion "0.5.0"
 #define AppPublisher "LiveZoom"
 #define AppExeName "livezoom_win.exe"
 

@@ -40,6 +40,31 @@ void writeString(const std::wstring& path, const wchar_t* key, const std::wstrin
     WritePrivateProfileStringW(kSection, key, value.c_str(), path.c_str());
 }
 
+const wchar_t* cursorStyleName(CursorStyle style) {
+    switch (style) {
+        case CursorStyle::Classic: return L"classic";
+        case CursorStyle::Light: return L"light";
+        case CursorStyle::Ocean: return L"ocean";
+        case CursorStyle::Sunset: return L"sunset";
+        case CursorStyle::Mint: return L"mint";
+        case CursorStyle::Dot: return L"dot";
+        case CursorStyle::Spotlight: return L"spotlight";
+        case CursorStyle::System: return L"system";
+    }
+    return L"classic";
+}
+
+CursorStyle cursorStyleFromName(const std::wstring& name) {
+    if (name == L"light") return CursorStyle::Light;
+    if (name == L"ocean") return CursorStyle::Ocean;
+    if (name == L"sunset") return CursorStyle::Sunset;
+    if (name == L"mint") return CursorStyle::Mint;
+    if (name == L"dot") return CursorStyle::Dot;
+    if (name == L"spotlight") return CursorStyle::Spotlight;
+    if (name == L"system") return CursorStyle::System;
+    return CursorStyle::Classic;
+}
+
 const wchar_t* inkStyleName(InkStyle style) {
     switch (style) {
         case InkStyle::Marker: return L"marker";
@@ -136,6 +161,10 @@ bool Settings::load() {
     drawWhileZoomed = readBool(file, L"drawWhileZoomed", drawWhileZoomed);
     blankSystemCursor = readBool(file, L"blankSystemCursor", blankSystemCursor);
     cursorSize = std::clamp(readDouble(file, L"cursorSize", cursorSize), 0.5, 3.0);
+    cursorStyle = cursorStyleFromName(readString(file, L"cursorStyle", L"classic"));
+    smoothCursor = readBool(file, L"smoothCursor", smoothCursor);
+    hideIdleCursor = readBool(file, L"hideIdleCursor", hideIdleCursor);
+    idleDelay = std::clamp(readDouble(file, L"idleDelay", idleDelay), 1.0, 10.0);
 
     const std::wstring followName = readString(file, L"follow", L"calm");
     if (followName == L"standard") {
@@ -165,6 +194,10 @@ bool Settings::save() const {
     writeString(file, L"drawWhileZoomed", drawWhileZoomed ? L"1" : L"0");
     writeString(file, L"blankSystemCursor", blankSystemCursor ? L"1" : L"0");
     writeString(file, L"cursorSize", std::to_wstring(cursorSize));
+    writeString(file, L"cursorStyle", cursorStyleName(cursorStyle));
+    writeString(file, L"smoothCursor", smoothCursor ? L"1" : L"0");
+    writeString(file, L"hideIdleCursor", hideIdleCursor ? L"1" : L"0");
+    writeString(file, L"idleDelay", std::to_wstring(idleDelay));
     const wchar_t* followName = L"calm";
     if (follow == FollowStyle::Standard) followName = L"standard";
     if (follow == FollowStyle::Snappy) followName = L"snappy";

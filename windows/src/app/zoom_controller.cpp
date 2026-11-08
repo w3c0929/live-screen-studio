@@ -79,7 +79,15 @@ void ZoomController::startZoom() {
     const lz::Point local{
         std::clamp(static_cast<lz::Real>(cursor.x - monitorRect_.left), 0.0, display_.width),
         std::clamp(static_cast<lz::Real>(cursor.y - monitorRect_.top), 0.0, display_.height)};
-    camera_->zoomIn(settings_.defaultZoom, local, nowSeconds());
+    const double now = nowSeconds();
+    camera_->zoomIn(settings_.defaultZoom, local, now);
+    cursorMotion_.emplace(local, now);
+    cursorMotion_->smoothTime = settings_.smoothCursor ? 0.06 : 0.0;
+    cursorMotion_->idleDelay = settings_.hideIdleCursor
+                                   ? std::optional<double>(settings_.idleDelay)
+                                   : std::nullopt;
+    cursorMotion_->jump(local, now);
+    overlay_->setCursorStyle(settings_.cursorStyle);
 
     active_ = true;
     lastTick_ = nowSeconds();
@@ -203,11 +211,20 @@ void ZoomController::tick() {
             const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
             overlay_->extendStroke(contentPoint(cursor.x, cursor.y), shift);
         }
-        const lz::Point content = contentPoint(cursor.x, cursor.y);
+        const bool buttonsDown =
+            strokeDrawing_ || (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
+            (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 ||
+            (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+        if (strokeDrawing_) {
+            // Keep the pen tip exactly under the ink while drawing.
+            cursorMotion_->jump(local, now);
+        } else {
+            cursorMotion_->update(local, buttonsDown, now, dt);
+        }
+        const lz::Point drawn = strokeDrawing_ ? local : cursorMotion_->position;
         const double zoom = camera_->zoom();
-        overlay_->setCursor(
-            {(content.x - viewport.x) * zoom, (content.y - viewport.y) * zoom},
-            zoom * settings_.cursorSize, true);
+        overlay_->setCursor({(drawn.x - viewport.x) * zoom, (drawn.y - viewport.y) * zoom},
+                            zoom * settings_.cursorSize, cursorMotion_->opacity);
         overlay_->render(now);
     }
     engine_.setViewport({viewport.x + static_cast<lz::Real>(monitorRect_.left),
@@ -285,6 +302,13 @@ void ZoomController::reloadSettings() {
     if (overlay_) {
         overlay_->setInk(settings_.inkLook());
         overlay_->setClickEffect(settings_.clickEffect, settings_.clickRgba());
+        overlay_->setCursorStyle(settings_.cursorStyle);
+    }
+    if (cursorMotion_) {
+        cursorMotion_->smoothTime = settings_.smoothCursor ? 0.06 : 0.0;
+        cursorMotion_->idleDelay = settings_.hideIdleCursor
+                                       ? std::optional<double>(settings_.idleDelay)
+                                       : std::nullopt;
     }
     input_.setDrawingArmed(settings_.drawWhileZoomed && overlay_ && overlay_->visible());
 }

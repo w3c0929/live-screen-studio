@@ -318,10 +318,11 @@ void OverlayRenderer::addClick(lz::Point screenLocal, double now) {
     clicks_.push_back({screenLocal, now, clickEffect_, clickColor_});
 }
 
-void OverlayRenderer::setCursor(lz::Point position, double scale, bool visible) {
+void OverlayRenderer::setCursor(lz::Point position, double scale, double opacity) {
     cursorPosition_ = position;
     cursorScale_ = scale;
-    cursorVisible_ = visible;
+    cursorOpacity_ = opacity;
+    cursorVisible_ = opacity > 0.01;
 }
 
 bool OverlayRenderer::buildCursorPath() {
@@ -349,15 +350,54 @@ void OverlayRenderer::drawCursor() {
     if (!cursorVisible_ || !d2dContext_ || !buildCursorPath()) return;
     const float scale = static_cast<float>(cursorScale_);
     if (scale <= 0) return;
+    const float opacity = static_cast<float>(cursorOpacity_);
     d2dContext_->SetTransform(D2D1::Matrix3x2F(
         scale, 0, 0, scale, static_cast<float>(cursorPosition_.x),
         static_cast<float>(cursorPosition_.y)));
-    setBrush({0, 0, 0, 0.35f});
-    d2dContext_->DrawGeometry(cursorPath_.Get(), brush_.Get(), 3.2f, roundStyle_.Get());
-    setBrush({0.07f, 0.07f, 0.08f, 1.0f});
-    d2dContext_->FillGeometry(cursorPath_.Get(), brush_.Get());
-    setBrush({1, 1, 1, 1.0f});
-    d2dContext_->DrawGeometry(cursorPath_.Get(), brush_.Get(), 1.2f, roundStyle_.Get());
+
+    auto arrow = [&](lz::Rgba fill, lz::Rgba outline, float outlineWidth) {
+        setBrush({0, 0, 0, 0.35f}, opacity);
+        d2dContext_->DrawGeometry(cursorPath_.Get(), brush_.Get(), 3.2f, roundStyle_.Get());
+        setBrush(fill, opacity);
+        d2dContext_->FillGeometry(cursorPath_.Get(), brush_.Get());
+        setBrush(outline, opacity);
+        d2dContext_->DrawGeometry(cursorPath_.Get(), brush_.Get(), outlineWidth,
+                                  roundStyle_.Get());
+    };
+
+    switch (cursorStyle_) {
+        case lz::CursorStyle::Light:
+            arrow({1, 1, 1, 1}, {0.1f, 0.1f, 0.12f, 1}, 1.2f);
+            break;
+        case lz::CursorStyle::Ocean:
+            arrow({0.18f, 0.5f, 0.93f, 1}, {1, 1, 1, 1}, 1.6f);
+            break;
+        case lz::CursorStyle::Sunset:
+            arrow({1.0f, 0.36f, 0.22f, 1}, {1, 1, 1, 1}, 1.6f);
+            break;
+        case lz::CursorStyle::Mint:
+            arrow({0.14f, 0.78f, 0.58f, 1}, {1, 1, 1, 1}, 1.6f);
+            break;
+        case lz::CursorStyle::Dot: {
+            setBrush({0.1f, 0.1f, 0.12f, 0.88f}, opacity);
+            const D2D1_ELLIPSE dot{D2D1::Point2F(0, 0), 7.5f, 7.5f};
+            d2dContext_->FillEllipse(dot, brush_.Get());
+            setBrush({1, 1, 1, 1}, opacity);
+            d2dContext_->DrawEllipse(dot, brush_.Get(), 2.0f);
+            break;
+        }
+        case lz::CursorStyle::Spotlight:
+            setBrush({1.0f, 0.84f, 0.04f, 0.42f}, opacity);
+            d2dContext_->FillEllipse(
+                D2D1::Ellipse(D2D1::Point2F(0, 0), 17, 17), brush_.Get());
+            arrow({0.07f, 0.07f, 0.08f, 1}, {1, 1, 1, 1}, 1.5f);
+            break;
+        case lz::CursorStyle::System:
+        case lz::CursorStyle::Classic:
+        default:
+            arrow({0.07f, 0.07f, 0.08f, 1}, {1, 1, 1, 1}, 1.2f);
+            break;
+    }
     d2dContext_->SetTransform(D2D1::Matrix3x2F::Identity());
 }
 
