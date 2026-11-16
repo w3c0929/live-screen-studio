@@ -100,6 +100,8 @@ private:
 
     enum class LeftState {
         Idle,
+        /// Button is down but the pointer has not moved far enough to be a drawing yet.
+        Pending,
         Drawing,
         Passthrough,
     };
