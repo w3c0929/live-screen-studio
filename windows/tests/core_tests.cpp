@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -12,6 +13,7 @@
 #include "drag_pointer.h"
 #include "smooth_damp.h"
 #include "text_lines.h"
+#include "wavy.h"
 
 namespace {
 
@@ -546,6 +548,40 @@ void arrowHeadTests() {
     CHECK(!ArrowHead::barbs({{5, 5}, {6, 5}}, 20).has_value());
 }
 
+void wavyTests() {
+    {
+        const std::vector<Point> line{{0, 0}, {100, 0}};
+        const auto wave = WavyPath::offset(line, 5, 20);
+        CHECK(wave.size() > 1);
+        CHECK_NEAR(wave.front().x, 0, 1e-9);
+        CHECK_NEAR(wave.front().y, 0, 1e-9);
+        CHECK_NEAR(wave.back().x, 100, 1e-9);
+        CHECK_NEAR(wave.back().y, 0, 1e-9);
+        double maxOffset = 0;
+        for (const Point& p : wave) {
+            CHECK(std::isfinite(p.x) && std::isfinite(p.y));
+            CHECK(p.x >= -1e-9 && p.x <= 100 + 1e-9);
+            CHECK(std::abs(p.y) <= 5 + 1e-9);
+            maxOffset = std::max(maxOffset, std::abs(p.y));
+        }
+        CHECK_NEAR(maxOffset, 5, 0.5);
+    }
+    {
+        // Duplicate points must not produce NaNs or a missing tangent.
+        const std::vector<Point> line{{0, 0}, {0, 0}, {50, 0}};
+        const auto wave = WavyPath::offset(line, 3, 15);
+        for (const Point& p : wave) {
+            CHECK(std::isfinite(p.x) && std::isfinite(p.y));
+        }
+    }
+    {
+        const std::vector<Point> dot{{10, 10}};
+        const auto wave = WavyPath::offset(dot, 3, 15);
+        CHECK(wave.size() == 1);
+        CHECK(wave[0] == Point{10, 10});
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -554,6 +590,7 @@ int main() {
     dragPointerTests();
     textLineTests();
     arrowHeadTests();
+    wavyTests();
 
     if (g_failures == 0) {
         std::printf("core_tests: all checks passed\n");

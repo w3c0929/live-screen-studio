@@ -15,6 +15,7 @@ enum class InkStyle {
     Highlighter,
     Arrow,
     Dashed,
+    Wavy,
 };
 
 struct InkLook {

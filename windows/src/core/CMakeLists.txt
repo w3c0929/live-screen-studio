@@ -9,6 +9,7 @@ add_library(livezoom_core STATIC
     drag_pointer.cpp
     text_lines.cpp
     arrow_head.cpp
+    wavy.cpp
 )
 
 target_include_directories(livezoom_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

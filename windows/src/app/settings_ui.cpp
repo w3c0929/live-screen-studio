@@ -282,6 +282,7 @@ void createControls(HWND dialog) {
     SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"荧光笔"));
     SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"箭头"));
     SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"流动虚线"));
+    SendMessageW(g_inkStyleCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"波浪线"));
     int styleIndex = 0;
     switch (g_settings->inkStyle) {
         case lz::InkStyle::Marker: styleIndex = 0; break;
@@ -289,6 +290,7 @@ void createControls(HWND dialog) {
         case lz::InkStyle::Highlighter: styleIndex = 2; break;
         case lz::InkStyle::Arrow: styleIndex = 3; break;
         case lz::InkStyle::Dashed: styleIndex = 4; break;
+        case lz::InkStyle::Wavy: styleIndex = 5; break;
     }
     SendMessageW(g_inkStyleCombo, CB_SETCURSEL, styleIndex, 0);
 
@@ -418,6 +420,7 @@ void readControls() {
         case 2: g_settings->inkStyle = lz::InkStyle::Highlighter; break;
         case 3: g_settings->inkStyle = lz::InkStyle::Arrow; break;
         case 4: g_settings->inkStyle = lz::InkStyle::Dashed; break;
+        case 5: g_settings->inkStyle = lz::InkStyle::Wavy; break;
         default: g_settings->inkStyle = lz::InkStyle::Marker; break;
     }
 

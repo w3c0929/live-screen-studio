@@ -7,6 +7,7 @@
 #include <dwmapi.h>
 
 #include "arrow_head.h"
+#include "wavy.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -504,6 +505,7 @@ void OverlayRenderer::drawStyledGeometry(ID2D1Geometry* geometry, const lz::InkL
     switch (style) {
         case lz::InkStyle::Marker:
         case lz::InkStyle::Arrow:
+        case lz::InkStyle::Wavy:
             setBrush(look.color);
             d2dContext_->DrawGeometry(geometry, brush_.Get(), w, roundStyle_.Get());
             break;
@@ -530,10 +532,23 @@ void OverlayRenderer::drawStyledGeometry(ID2D1Geometry* geometry, const lz::InkL
 
 void OverlayRenderer::drawStroke(const lz::Annotation& annotation) {
     if (annotation.points.empty()) return;
-    ComPtr<ID2D1PathGeometry> path = buildStrokePath(annotation.points);
+    std::vector<lz::Point> points = annotation.points;
+    if (annotation.look.style == lz::InkStyle::Wavy) {
+        // Wave height and period scale with the selected stroke width, with a floor so thin
+        // strokes still read as a wave.
+        const double amplitude =
+            std::max(annotation.look.width * 0.9, 4.0) * annotation.unit;
+        const double wavelength =
+            std::max(annotation.look.width * 6.0, 24.0) * annotation.unit;
+        points = lz::WavyPath::offset(annotation.points, amplitude, wavelength);
+    }
+    ComPtr<ID2D1PathGeometry> path = buildStrokePath(points);
     if (!path) return;
     const double width = annotation.look.width * annotation.unit;
-    drawStyledGeometry(path.Get(), annotation.look, width, annotation.look.style);
+    const lz::InkStyle style = annotation.look.style == lz::InkStyle::Wavy
+                                   ? lz::InkStyle::Marker
+                                   : annotation.look.style;
+    drawStyledGeometry(path.Get(), annotation.look, width, style);
 
     if (annotation.look.style == lz::InkStyle::Arrow) {
         const double length =

@@ -72,6 +72,7 @@ const wchar_t* inkStyleName(InkStyle style) {
         case InkStyle::Highlighter: return L"highlighter";
         case InkStyle::Arrow: return L"arrow";
         case InkStyle::Dashed: return L"dashed";
+        case InkStyle::Wavy: return L"wavy";
     }
     return L"marker";
 }
@@ -81,6 +82,7 @@ InkStyle inkStyleFromName(const std::wstring& name) {
     if (name == L"highlighter") return InkStyle::Highlighter;
     if (name == L"arrow") return InkStyle::Arrow;
     if (name == L"dashed") return InkStyle::Dashed;
+    if (name == L"wavy") return InkStyle::Wavy;
     return InkStyle::Marker;
 }
 
