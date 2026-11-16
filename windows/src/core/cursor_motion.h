@@ -3,7 +3,6 @@
 #include <optional>
 
 #include "geometry.h"
-#include "smooth_damp.h"
 
 namespace lz {
 
@@ -11,6 +10,9 @@ namespace lz {
 struct CursorMotion {
     /// 0 follows the mouse exactly.
     double smoothTime = 0;
+    /// Largest distance the drawn cursor may trail the pointer, in content points. Small values
+    /// keep the cursor visually locked to the hand even while smoothing is enabled.
+    Real maxLag = 1e9;
     /// nullopt never hides the cursor.
     std::optional<double> idleDelay;
     double fadeOutDuration = 0.35;
@@ -27,7 +29,6 @@ struct CursorMotion {
     void jump(Point to, double now);
 
 private:
-    Vector velocity_;
     Point lastInput_;
     double lastActivity_;
     /// Low-passed pointer speed, used to shorten the smoothing when the mouse moves fast.

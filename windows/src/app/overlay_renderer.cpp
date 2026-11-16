@@ -619,5 +619,8 @@ void OverlayRenderer::render(double now) {
         std::printf("[livezoom] overlay target lost\n");
         return;
     }
-    swapChain_->Present(1, 0);
+    // Submit immediately instead of waiting for the next vertical blank: the composition is
+    // presented by DWM anyway, and the removed wait keeps the drawn cursor one frame closer to
+    // the magnified content during pans (visible in screen recordings).
+    swapChain_->Present(0, 0);
 }

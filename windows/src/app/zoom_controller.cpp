@@ -33,7 +33,8 @@ lz::Rect ZoomController::shownViewport() const {
     lz::Rect viewport = camera_->viewport();
     if (camera_->phase() == lz::Phase::Zoomed &&
         camera_->zoom() == camera_->targetZoom()) {
-        // Whole output pixels keep the magnified image from resampling every frame.
+        // Whole output pixels keep the magnified image from resampling every frame and make
+        // camera pans move in single-pixel steps.
         viewport = lz::ViewportMath::pixelAligned(viewport, camera_->zoom(), 1.0, display_);
     }
     return viewport;
@@ -83,6 +84,7 @@ void ZoomController::startZoom() {
     camera_->zoomIn(settings_.defaultZoom, local, now);
     cursorMotion_.emplace(local, now);
     cursorMotion_->smoothTime = settings_.smoothCursor ? 0.06 : 0.0;
+    cursorMotion_->maxLag = 2.0 / settings_.defaultZoom;
     cursorMotion_->idleDelay = settings_.hideIdleCursor
                                    ? std::optional<double>(settings_.idleDelay)
                                    : std::nullopt;
@@ -228,6 +230,7 @@ void ZoomController::tick() {
             // Keep the pen tip exactly under the ink while drawing.
             cursorMotion_->jump(local, now);
         } else {
+            cursorMotion_->maxLag = 2.0 / zoom;
             cursorMotion_->update(local, buttonsDown, now, dt);
         }
         const lz::Point drawn = strokeDrawing_ ? local : cursorMotion_->position;
@@ -323,6 +326,7 @@ void ZoomController::reloadSettings() {
     }
     if (cursorMotion_) {
         cursorMotion_->smoothTime = settings_.smoothCursor ? 0.06 : 0.0;
+        cursorMotion_->maxLag = 2.0 / (camera_ ? camera_->zoom() : 1.0);
         cursorMotion_->idleDelay = settings_.hideIdleCursor
                                        ? std::optional<double>(settings_.idleDelay)
                                        : std::nullopt;

@@ -1,7 +1,7 @@
 #include "cursor_motion.h"
 
 #include <algorithm>
-#include <limits>
+#include <cmath>
 
 namespace lz {
 
@@ -24,14 +24,22 @@ void CursorMotion::update(Point input, bool buttonsDown, double now, double dt) 
 
     if (smoothTime > 0) {
         // Fast motion must stay under the hand; smoothing is mostly for slow, jittery moves.
-        // Fixed smoothing made the drawn cursor trail the pointer, which reads as unnatural.
-        const Real fast = clamp(speed_ / static_cast<Real>(900), 0.0, 1.0);
-        const double effective = smoothTime * (0.2 + 0.8 * (1.0 - fast));
-        position = SmoothDamp::step(position, input, velocity_, effective,
-                                    std::numeric_limits<Real>::max(), dt);
+        const Real fast = clamp(speed_ / static_cast<Real>(600), 0.0, 1.0);
+        const double tau = std::max(smoothTime * (0.15 + 0.85 * (1.0 - fast)), 1e-4);
+        const Real alpha = static_cast<Real>(1 - std::exp(-dt / tau));
+        position.x += (input.x - position.x) * alpha;
+        position.y += (input.y - position.y) * alpha;
+        // Hard cap: a trailing cursor reads as "the mouse is not following", especially in a
+        // recording, so the drawn pointer never gets further than maxLag from the real one.
+        const Vector lag{input.x - position.x, input.y - position.y};
+        const Real length = hypot(lag);
+        if (length > maxLag) {
+            const Real pull = (length - maxLag) / length;
+            position.x += lag.dx * pull;
+            position.y += lag.dy * pull;
+        }
     } else {
         position = input;
-        velocity_ = {};
     }
     const bool hidden = idleDelay && (now - lastActivity_ >= *idleDelay);
     if (hidden) {
@@ -45,7 +53,6 @@ void CursorMotion::jump(Point to, double now) {
     position = to;
     lastInput_ = to;
     lastActivity_ = now;
-    velocity_ = {};
     speed_ = 0;
     opacity = 1;
 }

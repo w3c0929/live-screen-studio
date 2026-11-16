@@ -262,8 +262,8 @@ void createControls(HWND dialog) {
                                   L"使用鼠标中键放大/缩回（含滚轮调倍）", 24, 268, 400, 24);
     SendMessageW(g_middleClickCheck, BM_SETCHECK,
                  g_settings->middleClickZoom ? BST_CHECKED : BST_UNCHECKED, 0);
-    g_sharpTextCheck = addCheck(dialog, kIdSharpText, L"整数倍放大时保持文字锐利", 24, 300, 400,
-                                24);
+    g_sharpTextCheck = addCheck(dialog, kIdSharpText, L"整数倍时按像素锐利显示（可能呈块状）", 24,
+                                300, 400, 24);
     SendMessageW(g_sharpTextCheck, BM_SETCHECK,
                  g_settings->sharpText ? BST_CHECKED : BST_UNCHECKED, 0);
     g_autoStartCheck = addCheck(dialog, kIdAutoStart, L"开机启动 LiveZoom", 800, 208, 200, 24);
@@ -371,7 +371,7 @@ void createControls(HWND dialog) {
               L"右键：撤销    Esc：清除笔迹\n"
               L"聚光灯：默认 Ctrl+Shift+4 在光标周围聚光（可自定义快捷键）\n"
               L"跟随边缘：百分比越小，越靠近屏幕边缘才移动\n"
-              L"整数倍（2×/3×/4×）放大可关闭平滑让文字锐利；非整数倍仍按“画面平滑”处理",
+              L"整数倍放大：默认平滑；勾选“按像素锐利显示”会变为块状（Windows 放大只有这两种采样）",
               24, 350, 1000, 118);
 
     addButton(dialog, kIdOk, L"确定", 860, 480, 86, 30);

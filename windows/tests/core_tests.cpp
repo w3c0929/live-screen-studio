@@ -359,6 +359,21 @@ void cursorMotionTests() {
         CHECK(motion.position == Point{300, 40});
     }
     {
+        // The drawn cursor may never trail the pointer further than maxLag, even at speed.
+        CursorMotion motion({0, 0}, 0);
+        motion.smoothTime = 0.06;
+        motion.maxLag = 1.0;
+        Point input{0, 0};
+        double t = 0;
+        for (int i = 0; i < 120; ++i) {
+            t += 1.0 / 60;
+            input.x += 10;  // 600 points per second
+            motion.update(input, false, t, 1.0 / 60);
+            CHECK(std::hypot(motion.position.x - input.x, motion.position.y - input.y) <=
+                  1.0 + 1e-9);
+        }
+    }
+    {
         CursorMotion motion({0, 0}, 0);
         motion.smoothTime = 0.05;
         const Point target{200, 0};

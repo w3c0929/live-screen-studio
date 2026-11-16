@@ -55,7 +55,7 @@ struct Settings {
     bool excludeObs = true;
     bool drawWhileZoomed = true;
     bool middleClickZoom = true;
-    bool sharpText = true;
+    bool sharpText = false;
 
     Hotkey zoomHotkey{0x5A, 5};          // Ctrl+Shift+Z
     Hotkey highlightSpotlight{0x34, 5};  // Ctrl+Shift+4
