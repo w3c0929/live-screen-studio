@@ -205,8 +205,15 @@ void ZoomController::tick() {
     lastPhase_ = camera_->phase();
 
     const lz::Rect viewport = shownViewport();
+    const double zoom = camera_->zoom();
+    // Whole-number zoom with whole-pixel alignment turns into a pure 2x/3x/4x pixel copy, so
+    // the magnifier can skip its bilinear filter and keep text crisp.
+    const bool pixelExact =
+        settings_.sharpText && camera_->phase() == lz::Phase::Zoomed &&
+        zoom == camera_->targetZoom() && std::abs(zoom - std::round(zoom)) < 1e-6;
+    engine_.setPixelExact(pixelExact);
     if (overlay_) {
-        overlay_->setMapping(viewport.origin(), camera_->zoom(), display_);
+        overlay_->setMapping(viewport.origin(), zoom, display_);
         // The hook also sends moves, but sampling here keeps the line continuous even when a
         // busy main thread or a mouse driver drops some of them.
         if (strokeDrawing_) {
@@ -224,7 +231,6 @@ void ZoomController::tick() {
             cursorMotion_->update(local, buttonsDown, now, dt);
         }
         const lz::Point drawn = strokeDrawing_ ? local : cursorMotion_->position;
-        const double zoom = camera_->zoom();
         const lz::Point shownCursor{(drawn.x - viewport.x) * zoom,
                                     (drawn.y - viewport.y) * zoom};
         overlay_->setCursor(shownCursor, zoom * settings_.cursorSize,
@@ -234,7 +240,7 @@ void ZoomController::tick() {
     }
     engine_.setViewport({viewport.x + static_cast<lz::Real>(monitorRect_.left),
                          viewport.y + static_cast<lz::Real>(monitorRect_.top)},
-                        camera_->zoom());
+                        zoom);
 
     if (camera_->phase() == lz::Phase::Idle) {
         finish();

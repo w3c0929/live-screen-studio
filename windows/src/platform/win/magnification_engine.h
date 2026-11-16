@@ -31,6 +31,9 @@ public:
     /// `sourceTopLeft` is the top-left of the visible display area, in virtual-screen pixels.
     void setViewport(lz::Point sourceTopLeft, double zoom);
     void setSmoothing(bool smooth);
+    /// At a whole-number zoom with a pixel-aligned viewport the magnifier copies pixels exactly;
+    /// smoothing then only softens text, so it is switched off for those frames.
+    void setPixelExact(bool exact);
     void setExcludeObs(bool exclude);
     /// The ink/cursor overlay must never be magnified, or it would be drawn twice.
     void setOverlayWindow(HWND overlay);
@@ -61,6 +64,7 @@ private:
     void showHost();
     void hideHardwareCursor(bool hide);
     void blankSystemCursors();
+    void applySmoothing();
     void registerHostClass();
 
     Api api_;
@@ -71,6 +75,7 @@ private:
     RECT monitorRect_{};
     bool visible_ = false;
     bool smoothing_ = false;
+    bool pixelExact_ = false;
     bool excludeObs_ = true;
     HWND overlay_ = nullptr;
     bool hardwareCursorHidden_ = false;

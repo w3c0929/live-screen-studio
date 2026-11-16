@@ -30,6 +30,8 @@ private:
     Vector velocity_;
     Point lastInput_;
     double lastActivity_;
+    /// Low-passed pointer speed, used to shorten the smoothing when the mouse moves fast.
+    Real speed_ = 0;
 };
 
 }  // namespace lz

@@ -29,6 +29,7 @@ constexpr int kIdMarginSnappy = 1017;
 constexpr int kIdHotkeyOpen = 1018;
 constexpr int kIdAutoStart = 1020;
 constexpr int kIdMiddleClick = 1021;
+constexpr int kIdSharpText = 1022;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 constexpr int kIdRecordToggle = 3001;
@@ -61,6 +62,7 @@ HWND g_cursorStyleCombo = nullptr;
 HWND g_smoothCursorCheck = nullptr;
 HWND g_hideIdleCheck = nullptr;
 HWND g_middleClickCheck = nullptr;
+HWND g_sharpTextCheck = nullptr;
 HWND g_autoStartCheck = nullptr;
 HWND g_marginCalmCombo = nullptr;
 HWND g_marginStandardCombo = nullptr;
@@ -243,7 +245,7 @@ void createControls(HWND dialog) {
     SendMessageW(g_drawCheck, BM_SETCHECK, g_settings->drawWhileZoomed ? BST_CHECKED : BST_UNCHECKED,
                  0);
 
-    g_smoothCheck = addCheck(dialog, kIdSmooth, L"放大画面平滑", 24, 140, 300, 24);
+    g_smoothCheck = addCheck(dialog, kIdSmooth, L"放大画面平滑（非整数倍时）", 24, 140, 320, 24);
     SendMessageW(g_smoothCheck, BM_SETCHECK, g_settings->smoothImage ? BST_CHECKED : BST_UNCHECKED,
                  0);
 
@@ -260,6 +262,10 @@ void createControls(HWND dialog) {
                                   L"使用鼠标中键放大/缩回（含滚轮调倍）", 24, 268, 400, 24);
     SendMessageW(g_middleClickCheck, BM_SETCHECK,
                  g_settings->middleClickZoom ? BST_CHECKED : BST_UNCHECKED, 0);
+    g_sharpTextCheck = addCheck(dialog, kIdSharpText, L"整数倍放大时保持文字锐利", 24, 300, 400,
+                                24);
+    SendMessageW(g_sharpTextCheck, BM_SETCHECK,
+                 g_settings->sharpText ? BST_CHECKED : BST_UNCHECKED, 0);
     g_autoStartCheck = addCheck(dialog, kIdAutoStart, L"开机启动 LiveZoom", 800, 208, 200, 24);
     SendMessageW(g_autoStartCheck, BM_SETCHECK,
                  autoStartEnabled() ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -357,15 +363,16 @@ void createControls(HWND dialog) {
     addButton(dialog, kIdHotkeyOpen, L"快捷键…", 800, 168, 180, 30);
 
     // Explanatory text lives in a dedicated bottom block, never between controls.
-    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 24, 320,
+    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 24, 334,
                     1000, 2, dialog, nullptr, GetModuleHandleW(nullptr), nullptr);
     addStatic(dialog,
               L"放大/缩回：中键（可关闭），或默认 Ctrl+Shift+Z（快捷键可自定义）\n"
               L"按住中键滚动：调倍    放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
               L"右键：撤销    Esc：清除笔迹\n"
               L"聚光灯：默认 Ctrl+Shift+4 在光标周围聚光（可自定义快捷键）\n"
-              L"跟随边缘：百分比越小，越靠近屏幕边缘才移动",
-              24, 336, 1000, 120);
+              L"跟随边缘：百分比越小，越靠近屏幕边缘才移动\n"
+              L"整数倍（2×/3×/4×）放大可关闭平滑让文字锐利；非整数倍仍按“画面平滑”处理",
+              24, 350, 1000, 118);
 
     addButton(dialog, kIdOk, L"确定", 860, 480, 86, 30);
     addButton(dialog, kIdCancel, L"取消", 956, 480, 86, 30);
@@ -392,6 +399,8 @@ void readControls() {
         SendMessageW(g_hideIdleCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->middleClickZoom =
         SendMessageW(g_middleClickCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings->sharpText =
+        SendMessageW(g_sharpTextCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     const bool autoStart = SendMessageW(g_autoStartCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     if (!setAutoStart(autoStart)) {

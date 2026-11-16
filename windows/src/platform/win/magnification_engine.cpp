@@ -156,9 +156,8 @@ bool MagnificationEngine::createHost(HMONITOR monitor) {
 
     monitor_ = monitor;
     monitorRect_ = info.rcMonitor;
-    if (api_.setLensUseBitmapSmoothing) {
-        api_.setLensUseBitmapSmoothing(mag_, smoothing_ ? TRUE : FALSE);
-    }
+    pixelExact_ = false;
+    applySmoothing();
     refreshExcludedWindows();
     return true;
 }
@@ -241,8 +240,19 @@ void MagnificationEngine::setViewport(lz::Point sourceTopLeft, double zoom) {
 
 void MagnificationEngine::setSmoothing(bool smooth) {
     smoothing_ = smooth;
+    applySmoothing();
+}
+
+void MagnificationEngine::setPixelExact(bool exact) {
+    if (pixelExact_ == exact) return;
+    pixelExact_ = exact;
+    std::printf("[livezoom] pixel-exact scaling: %d\n", exact ? 1 : 0);
+    applySmoothing();
+}
+
+void MagnificationEngine::applySmoothing() {
     if (mag_ && api_.setLensUseBitmapSmoothing) {
-        api_.setLensUseBitmapSmoothing(mag_, smooth ? TRUE : FALSE);
+        api_.setLensUseBitmapSmoothing(mag_, smoothing_ && !pixelExact_ ? TRUE : FALSE);
     }
 }
 
