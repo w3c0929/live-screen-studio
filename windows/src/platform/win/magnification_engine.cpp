@@ -329,9 +329,10 @@ void MagnificationEngine::ensureCursorVisible() {
 
     // Reloading the current cursor scheme restores the real cursor bitmaps after
     // SetSystemCursor replaced them with blank ones, and recovers drivers that keep the
-    // magnifier's hide state.
+    // magnifier's hide state. No SPIF_SENDCHANGE: the synchronous broadcast can block on a
+    // hung window and is not needed just to reload the cursors.
     if (wasHidden) {
-        SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, SPIF_SENDCHANGE);
+        SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, 0);
         if (api_.showSystemCursor) api_.showSystemCursor(TRUE);
     }
 

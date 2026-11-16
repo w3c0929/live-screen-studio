@@ -7,7 +7,6 @@
 #include <mutex>
 #include <optional>
 #include <thread>
-#include <vector>
 
 #include "geometry.h"
 
@@ -22,6 +21,8 @@ inline constexpr UINT kLiveZoomClear = WM_APP + 9;
 inline constexpr UINT kLiveZoomClick = WM_APP + 10;
 inline constexpr UINT kLiveZoomStrokeCancel = WM_APP + 11;
 inline constexpr UINT kLiveZoomSpotlight = WM_APP + 13;
+/// Posted to the owner window so the click is injected from the UI thread, never the hook thread.
+inline constexpr UINT kLiveZoomReplayClick = WM_APP + 14;
 inline constexpr UINT kLiveZoomTray = WM_APP + 100;
 
 struct HotkeyBinding {
@@ -65,11 +66,14 @@ public:
     /// Stops hotkeys from firing while the settings dialog records a new combination.
     void setHotkeysSuppressed(bool suppressed) { hotkeysSuppressed_ = suppressed; }
     void setCursorBounds(std::optional<lz::Rect> bounds);
+    /// Injects a click. Must run on the UI thread: SendInput from the hook thread can deadlock
+    /// because the injected event has to pass through this same low-level hook.
+    void replayClickNow(POINT point);
 
     [[nodiscard]] bool running() const { return installed_; }
 
 private:
-    enum : UINT { kApplyCursorBounds = WM_APP + 20, kReplayClick = WM_APP + 21 };
+    enum : UINT { kApplyCursorBounds = WM_APP + 20 };
 
     static LRESULT CALLBACK mouseProc(int code, WPARAM message, LPARAM lParam);
     static LRESULT CALLBACK keyboardProc(int code, WPARAM message, LPARAM lParam);
@@ -78,10 +82,6 @@ private:
     void applyCursorBounds();
     void postStroke(UINT message, POINT point, bool straight);
     void postPoint(UINT message, POINT point);
-    /// Queues a click for the hook thread. Never call SendInput inside a hook callback:
-    /// repeated injected input there can stall the hook past the system timeout.
-    void queueReplay(POINT point);
-    void replayPending();
     void replayClick(POINT point);
 
     static InputHook* current_;
@@ -92,6 +92,9 @@ private:
     std::mutex readyMutex_;
     std::condition_variable readyCv_;
     bool ready_ = false;
+    std::mutex exitMutex_;
+    std::condition_variable exitCv_;
+    bool exited_ = false;
     std::atomic<bool> running_{false};
     std::atomic<bool> installed_{false};
     std::atomic<bool> enabled_{true};
@@ -105,8 +108,6 @@ private:
 
     enum class LeftState {
         Idle,
-        /// Button is down but the pointer has not moved far enough to be a drawing yet.
-        Pending,
         Drawing,
         Passthrough,
     };
@@ -127,7 +128,4 @@ private:
 
     std::mutex boundsMutex_;
     std::optional<lz::Rect> pendingBounds_;
-
-    std::mutex replayMutex_;
-    std::vector<POINT> replayQueue_;
 };

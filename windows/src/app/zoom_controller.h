@@ -56,6 +56,7 @@ private:
     lz::Size display_{};
     bool active_ = false;
     bool strokeDrawing_ = false;
+    lz::Point strokeOrigin_{};
     double lastTick_ = 0;
     double cursorRestoreAt_ = 0;
     int cursorRestoreTries_ = 0;

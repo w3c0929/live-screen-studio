@@ -138,6 +138,14 @@ LRESULT CALLBACK mainProc(HWND window, UINT message, WPARAM wParam, LPARAM lPara
         case kLiveZoomClear:
             g_controller->clearStrokes();
             return 0;
+        case kLiveZoomReplayClick: {
+            auto* point = reinterpret_cast<POINT*>(lParam);
+            if (point) {
+                g_input->replayClickNow(*point);
+                delete point;
+            }
+            return 0;
+        }
         case kLiveZoomClick: {
             auto* point = reinterpret_cast<POINT*>(lParam);
             if (point) {
@@ -307,11 +315,16 @@ int run(int argc, char** argv) {
     KillTimer(g_window, kFrameTimer);
     KillTimer(g_window, kExitTimer);
     timeEndPeriod(1);
+    std::printf("[livezoom] shutdown: controller\n");
     if (g_controller) g_controller->reset();
+    std::printf("[livezoom] shutdown: input hook\n");
     if (g_input) g_input->stop();
+    std::printf("[livezoom] shutdown: tray\n");
     if (g_tray) g_tray->remove();
+    std::printf("[livezoom] shutdown: engine\n");
     if (g_engine) g_engine->shutdown();
     ClipCursor(nullptr);
+    std::printf("[livezoom] shutdown: window\n");
     if (g_window) DestroyWindow(g_window);
     if (singleInstance) CloseHandle(singleInstance);
     std::printf("[livezoom] done\n");

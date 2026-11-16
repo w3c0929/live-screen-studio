@@ -46,6 +46,10 @@ bool InputHook::start(HWND target) {
         std::lock_guard lock(readyMutex_);
         ready_ = false;
     }
+    {
+        std::lock_guard lock(exitMutex_);
+        exited_ = false;
+    }
     thread_ = std::thread(&InputHook::threadMain, this);
 
     std::unique_lock lock(readyMutex_);
@@ -69,7 +73,23 @@ void InputHook::stop() {
     if (id != 0) {
         PostThreadMessageW(id, WM_QUIT, 0, 0);
     }
-    if (thread_.joinable()) thread_.join();
+    if (thread_.joinable()) {
+        std::printf("[livezoom] input hook: stopping\n");
+        bool exited = false;
+        {
+            std::unique_lock lock(exitMutex_);
+            exited = exitCv_.wait_for(lock, std::chrono::seconds(2),
+                                      [this] { return exited_; });
+        }
+        if (exited) {
+            thread_.join();
+            std::printf("[livezoom] input hook: stopped\n");
+        } else {
+            // A hung hook must never keep the process alive; the thread dies with the process.
+            std::printf("[livezoom] input hook: not responding, abandoning thread\n");
+            thread_.detach();
+        }
+    }
     threadId_ = 0;
     ClipCursor(nullptr);
     current_ = nullptr;
@@ -113,8 +133,6 @@ void InputHook::threadMain() {
         while (GetMessageW(&message, nullptr, 0, 0) > 0) {
             if (message.message == kApplyCursorBounds) {
                 applyCursorBounds();
-            } else if (message.message == kReplayClick) {
-                replayPending();
             }
         }
     }
@@ -125,6 +143,11 @@ void InputHook::threadMain() {
     keyboardHook_ = nullptr;
     ClipCursor(nullptr);
     threadId_ = 0;
+    {
+        std::lock_guard lock(exitMutex_);
+        exited_ = true;
+    }
+    exitCv_.notify_all();
 }
 
 void InputHook::setCursorBounds(std::optional<lz::Rect> bounds) {
@@ -174,27 +197,8 @@ void InputHook::postPoint(UINT message, POINT point) {
     }
 }
 
-void InputHook::queueReplay(POINT point) {
-    {
-        std::lock_guard lock(replayMutex_);
-        if (replayQueue_.size() >= 32) replayQueue_.erase(replayQueue_.begin());
-        replayQueue_.push_back(point);
-    }
-    const DWORD id = threadId_.load();
-    if (id != 0) {
-        PostThreadMessageW(id, kReplayClick, 0, 0);
-    }
-}
-
-void InputHook::replayPending() {
-    std::vector<POINT> points;
-    {
-        std::lock_guard lock(replayMutex_);
-        points.swap(replayQueue_);
-    }
-    for (const POINT& point : points) {
-        replayClick(point);
-    }
+void InputHook::replayClickNow(POINT point) {
+    replayClick(point);
 }
 
 void InputHook::replayClick(POINT point) {
@@ -268,10 +272,9 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                         if (self->ctrlAtDown_) {
                             self->leftState_ = LeftState::Passthrough;
                         } else {
-                            // Wait for movement before starting a stroke. Beginning one here
-                            // would pause the camera and cancel it again on every plain click,
-                            // which is exactly the hitch this defers.
-                            self->leftState_ = LeftState::Pending;
+                            // Begin the stroke on press so the very first movement draws.
+                            // A press with no movement is turned back into a click on release.
+                            self->leftState_ = LeftState::Drawing;
                             // GetCursorPos is the authoritative physical position; the hook
                             // point can be DPI-virtualized in some driver setups.
                             POINT down = mouse->pt;
@@ -279,6 +282,7 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                             self->downPoint_ = down;
                             self->moveCount_ = 0;
                             std::printf("[hook] down (%ld,%ld)\n", down.x, down.y);
+                            self->postStroke(kLiveZoomStrokeBegin, down, shift);
                             return 1;
                         }
                     } else {
@@ -286,17 +290,7 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                     }
                     break;
                 case WM_MOUSEMOVE:
-                    if (self->leftState_ == LeftState::Pending) {
-                        POINT now{};
-                        GetCursorPos(&now);
-                        const int dx = now.x - self->downPoint_.x;
-                        const int dy = now.y - self->downPoint_.y;
-                        if (dx * dx + dy * dy >= kDragThreshold * kDragThreshold) {
-                            self->leftState_ = LeftState::Drawing;
-                            self->postStroke(kLiveZoomStrokeBegin, self->downPoint_, shift);
-                            self->postStroke(kLiveZoomStrokeMove, now, shift);
-                        }
-                    } else if (self->leftState_ == LeftState::Drawing) {
+                    if (self->leftState_ == LeftState::Drawing) {
                         ++self->moveCount_;
                         // Points are sampled from GetCursorPos in the UI thread every frame.
                         // Let the cursor move; swallowing moves freezes the pointer and makes
@@ -304,34 +298,27 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                     }
                     break;
                 case WM_LBUTTONUP:
-                    if (self->leftState_ == LeftState::Pending) {
+                    if (self->leftState_ == LeftState::Drawing) {
                         POINT up = mouse->pt;
                         GetCursorPos(&up);
                         const int dx = up.x - self->downPoint_.x;
                         const int dy = up.y - self->downPoint_.y;
                         self->leftState_ = LeftState::Idle;
-                        if (dx * dx + dy * dy >=
+                        if (dx * dx + dy * dy <
                             kDragThreshold * kDragThreshold) {
-                            // A drag that started and ended between two hook samples.
-                            self->postStroke(kLiveZoomStrokeBegin, self->downPoint_, shift);
+                            // Press without movement: drop the stroke and forward a click.
+                            PostMessageW(self->target_, kLiveZoomStrokeCancel, 0, 0);
+                            std::printf("[hook] click (%ld,%ld)\n", self->downPoint_.x,
+                                        self->downPoint_.y);
+                            // Inject from the UI thread: SendInput on the hook thread has to
+                            // pass through this same hook and can deadlock under rapid clicks.
+                            self->postPoint(kLiveZoomReplayClick, self->downPoint_);
+                            self->postPoint(kLiveZoomClick, self->downPoint_);
+                        } else {
+                            std::printf("[hook] up moves=%d\n", self->moveCount_);
                             self->postStroke(kLiveZoomStrokeMove, up, shift);
                             PostMessageW(self->target_, kLiveZoomStrokeEnd, 0, 0);
-                            return 1;
                         }
-                        // Plain click: forward it now, without touching the stroke layer.
-                        std::printf("[hook] click (%ld,%ld)\n", self->downPoint_.x,
-                                    self->downPoint_.y);
-                        self->queueReplay(self->downPoint_);
-                        self->postPoint(kLiveZoomClick, self->downPoint_);
-                        return 1;
-                    }
-                    if (self->leftState_ == LeftState::Drawing) {
-                        POINT up = mouse->pt;
-                        GetCursorPos(&up);
-                        self->leftState_ = LeftState::Idle;
-                        std::printf("[hook] up moves=%d\n", self->moveCount_);
-                        self->postStroke(kLiveZoomStrokeMove, up, shift);
-                        PostMessageW(self->target_, kLiveZoomStrokeEnd, 0, 0);
                         return 1;
                     }
                     if (self->leftState_ == LeftState::Passthrough) {

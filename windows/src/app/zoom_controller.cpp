@@ -220,7 +220,11 @@ void ZoomController::tick() {
         // busy main thread or a mouse driver drops some of them.
         if (strokeDrawing_) {
             const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-            overlay_->extendStroke(contentPoint(cursor.x, cursor.y), shift);
+            const lz::Point content = contentPoint(cursor.x, cursor.y);
+            if (!(content == strokeOrigin_)) {
+                camera_->setFollowPaused(true);
+            }
+            overlay_->extendStroke(content, shift);
         }
         const bool buttonsDown =
             strokeDrawing_ || (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
@@ -265,14 +269,20 @@ void ZoomController::handleClick(int x, int y) {
 void ZoomController::beginStroke(int x, int y) {
     if (!active_ || !overlay_ || !overlay_->visible()) return;
     overlay_->setMapping(shownViewport().origin(), camera_->zoom(), display_);
-    overlay_->beginStroke(contentPoint(x, y));
-    camera_->setFollowPaused(true);
+    const lz::Point content = contentPoint(x, y);
+    strokeOrigin_ = content;
+    overlay_->beginStroke(content);
+    // Follow is paused only once the pointer actually moves; a plain click must not freeze it.
     strokeDrawing_ = true;
 }
 
 void ZoomController::moveStroke(int x, int y, bool straight) {
     if (!active_ || !overlay_) return;
-    overlay_->extendStroke(contentPoint(x, y), straight);
+    const lz::Point content = contentPoint(x, y);
+    if (strokeDrawing_ && !(content == strokeOrigin_)) {
+        camera_->setFollowPaused(true);
+    }
+    overlay_->extendStroke(content, straight);
 }
 
 void ZoomController::endStroke() {
