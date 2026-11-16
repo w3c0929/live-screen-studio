@@ -257,7 +257,10 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                     }
                     break;
                 case WM_MOUSEWHEEL:
-                    if (self->middleClickEnabled_ && self->middleDown_) {
+                    // While magnified the wheel adjusts the zoom directly; holding the middle
+                    // button is no longer required. Outside zoom the wheel belongs to the app.
+                    if (self->zoomActive_ ||
+                        (self->middleClickEnabled_ && self->middleDown_)) {
                         const int delta = static_cast<short>(HIWORD(mouse->mouseData));
                         const double steps = static_cast<double>(delta) / 120.0;
                         PostMessageW(self->target_, kLiveZoomAdjust,

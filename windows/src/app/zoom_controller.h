@@ -61,6 +61,7 @@ private:
     double lastTick_ = 0;
     double cursorRestoreAt_ = 0;
     int cursorRestoreTries_ = 0;
+    double wheelAccum_ = 0;
     lz::Point lastCameraCenter_{};
     lz::Phase lastPhase_ = lz::Phase::Idle;
     bool followStartLogged_ = false;

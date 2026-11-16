@@ -5,6 +5,8 @@
 #include <cwchar>
 #include <string>
 
+#include "zoom_steps.h"
+
 namespace {
 
 constexpr wchar_t kSettingsClass[] = L"LiveZoomSettingsWindow";
@@ -37,8 +39,6 @@ constexpr int kIdHotkeyClose = 3010;
 
 constexpr wchar_t kHotkeyClass[] = L"LiveZoomHotkeyWindow";
 
-constexpr double kZoomValues[] = {1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0};
-constexpr int kZoomCount = static_cast<int>(sizeof(kZoomValues) / sizeof(kZoomValues[0]));
 constexpr double kStrokeWidths[] = {2.0, 3.0, 5.0, 8.0, 12.0, 16.0};
 constexpr int kStrokeWidthCount =
     static_cast<int>(sizeof(kStrokeWidths) / sizeof(kStrokeWidths[0]));
@@ -166,19 +166,6 @@ bool setAutoStart(bool enabled) {
     return status == ERROR_SUCCESS;
 }
 
-int nearestZoomIndex(double zoom) {
-    int best = 0;
-    double distance = std::abs(kZoomValues[0] - zoom);
-    for (int i = 1; i < kZoomCount; ++i) {
-        const double current = std::abs(kZoomValues[i] - zoom);
-        if (current < distance) {
-            distance = current;
-            best = i;
-        }
-    }
-    return best;
-}
-
 int nearestWidthIndex(double width) {
     int best = 0;
     double distance = std::abs(kStrokeWidths[0] - width);
@@ -222,12 +209,17 @@ void fillMarginCombo(HWND combo, double margin) {
 void createControls(HWND dialog) {
     addStatic(dialog, L"默认倍数", 24, 24, 100, 22);
     g_zoomCombo = addCombo(dialog, kIdZoom, 140, 20, 120, 220);
-    for (double value : kZoomValues) {
+    for (double value : lz::kZoomSteps) {
         wchar_t text[32];
-        std::swprintf(text, 32, L"%.2g×", value);
-        SendMessageW(g_zoomCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
+        std::swprintf(text, 32, L"%.2f", value);
+        std::wstring label(text);
+        while (label.size() > 1 && label.back() == L'0') label.pop_back();
+        if (!label.empty() && label.back() == L'.') label.pop_back();
+        label += L"×";
+        SendMessageW(g_zoomCombo, CB_ADDSTRING, 0,
+                     reinterpret_cast<LPARAM>(label.c_str()));
     }
-    SendMessageW(g_zoomCombo, CB_SETCURSEL, nearestZoomIndex(g_settings->defaultZoom), 0);
+    SendMessageW(g_zoomCombo, CB_SETCURSEL, lz::nearestZoomStep(g_settings->defaultZoom), 0);
 
     addStatic(dialog, L"跟随速度", 24, 64, 100, 22);
     g_followCombo = addCombo(dialog, kIdFollow, 140, 60, 120, 220);
@@ -266,7 +258,7 @@ void createControls(HWND dialog) {
     SendMessageW(g_hideIdleCheck, BM_SETCHECK,
                  g_settings->hideIdleCursor ? BST_CHECKED : BST_UNCHECKED, 0);
     g_middleClickCheck = addCheck(dialog, kIdMiddleClick,
-                                  L"使用鼠标中键放大/缩回（含滚轮调倍）", 24, 268, 400, 24);
+                                  L"使用鼠标中键放大/缩回", 24, 268, 400, 24);
     SendMessageW(g_middleClickCheck, BM_SETCHECK,
                  g_settings->middleClickZoom ? BST_CHECKED : BST_UNCHECKED, 0);
     g_autoStartCheck = addCheck(dialog, kIdAutoStart, L"开机启动 LiveZoom", 800, 208, 200, 24);
@@ -372,7 +364,7 @@ void createControls(HWND dialog) {
                     1000, 2, dialog, nullptr, GetModuleHandleW(nullptr), nullptr);
     addStatic(dialog,
               L"放大/缩回：中键（可关闭），或默认 Ctrl+Shift+Z（快捷键可自定义）\n"
-              L"按住中键滚动：调倍    放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
+              L"放大时滚动滚轮：按档位调倍    放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
               L"右键或 Ctrl+Z：撤销    Ctrl+Y：恢复    Esc：清除笔迹\n"
               L"聚光灯：默认 Ctrl+Shift+4 在光标周围聚光（可自定义快捷键）\n"
               L"跟随边缘：百分比越小，越靠近屏幕边缘才移动\n"
@@ -385,8 +377,8 @@ void createControls(HWND dialog) {
 
 void readControls() {
     const int zoomIndex = static_cast<int>(SendMessageW(g_zoomCombo, CB_GETCURSEL, 0, 0));
-    if (zoomIndex >= 0 && zoomIndex < kZoomCount) {
-        g_settings->defaultZoom = kZoomValues[zoomIndex];
+    if (zoomIndex >= 0 && zoomIndex < lz::kZoomStepCount) {
+        g_settings->defaultZoom = lz::kZoomSteps[zoomIndex];
     }
     const int followIndex = static_cast<int>(SendMessageW(g_followCombo, CB_GETCURSEL, 0, 0));
     g_settings->follow = followIndex == 1 ? lz::FollowStyle::Standard

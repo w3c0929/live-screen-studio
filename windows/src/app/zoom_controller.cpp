@@ -8,6 +8,7 @@
 #include "magnification_engine.h"
 #include "overlay_renderer.h"
 #include "style.h"
+#include "zoom_steps.h"
 
 ZoomController::ZoomController(MagnificationEngine& engine, InputHook& input,
                                lz::Settings& settings)
@@ -49,6 +50,7 @@ lz::Point ZoomController::contentPoint(int x, int y) const {
 }
 
 void ZoomController::startZoom() {
+    wheelAccum_ = 0;
     POINT cursor{};
     GetCursorPos(&cursor);
     const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
@@ -114,6 +116,7 @@ void ZoomController::startZoom() {
 void ZoomController::finish() {
     if (!active_) return;
     active_ = false;
+    wheelAccum_ = 0;
     if (overlay_) {
         overlay_->clear();
         overlay_->hide();
@@ -161,7 +164,27 @@ void ZoomController::adjustZoom(double steps) {
         startZoom();
         if (!active_ || !camera_) return;
     }
-    camera_->adjustZoom(std::exp(0.1 * steps));
+    // High-resolution wheels send partial notches; accumulate until a whole one arrives.
+    wheelAccum_ += steps;
+    int notches = 0;
+    while (wheelAccum_ >= 1.0) {
+        ++notches;
+        wheelAccum_ -= 1.0;
+    }
+    while (wheelAccum_ <= -1.0) {
+        --notches;
+        wheelAccum_ += 1.0;
+    }
+    if (notches == 0) return;
+
+    // Step through the same fixed levels the settings combo offers, so the wheel always
+    // lands on a predictable zoom instead of an arbitrary value like 2.21x.
+    int index = lz::nearestZoomStep(camera_->targetZoom()) + notches;
+    index = std::clamp(index, 0, lz::kZoomStepCount - 1);
+    const double next = std::clamp(lz::kZoomSteps[index], camera_->config.minZoom,
+                                   camera_->config.maxZoom);
+    if (next == camera_->targetZoom()) return;
+    camera_->adjustZoom(next / camera_->targetZoom());
     std::printf("[livezoom] zoom target: %.2fx\n", camera_->targetZoom());
 }
 
