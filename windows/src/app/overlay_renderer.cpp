@@ -260,6 +260,7 @@ bool OverlayRenderer::showForMonitor(HMONITOR monitor) {
     destroyDevice();
     destroyWindow();
     annotations_.clear();
+    redo_.clear();
     clicks_.clear();
     strokeInProgress_ = false;
     if (!createWindow(monitor)) return false;
@@ -287,6 +288,7 @@ void OverlayRenderer::shutdown() {
     destroyDevice();
     destroyWindow();
     annotations_.clear();
+    redo_.clear();
     clicks_.clear();
 }
 
@@ -295,6 +297,7 @@ void OverlayRenderer::setMapping(lz::Point viewportOrigin, double zoom, lz::Size
     if (!(display == display_)) {
         display_ = display;
         annotations_.clear();
+        redo_.clear();
         clicks_.clear();
     }
     mappingOrigin_ = viewportOrigin;
@@ -321,8 +324,12 @@ void OverlayRenderer::extendStroke(lz::Point content, bool straight) {
 }
 
 void OverlayRenderer::endStroke() {
-    if (!annotations_.empty()) annotations_.back().complete = true;
+    if (!annotations_.empty()) {
+        annotations_.back().complete = true;
+    }
     strokeInProgress_ = false;
+    // A newly committed stroke starts a new edit branch; anything undone is no longer redoable.
+    redo_.clear();
 }
 
 void OverlayRenderer::cancelStroke() {
@@ -332,16 +339,24 @@ void OverlayRenderer::cancelStroke() {
 }
 
 void OverlayRenderer::undo() {
+    if (strokeInProgress_) return;
     if (!annotations_.empty()) {
+        redo_.push_back(annotations_.back());
         annotations_.pop_back();
     } else if (spotlightActive_) {
         spotlightActive_ = false;
     }
-    strokeInProgress_ = false;
+}
+
+void OverlayRenderer::redo() {
+    if (strokeInProgress_ || redo_.empty()) return;
+    annotations_.push_back(redo_.back());
+    redo_.pop_back();
 }
 
 void OverlayRenderer::clear() {
     annotations_.clear();
+    redo_.clear();
     clicks_.clear();
     spotlightActive_ = false;
     strokeInProgress_ = false;

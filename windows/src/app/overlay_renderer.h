@@ -37,10 +37,12 @@ public:
     void endStroke();
     void cancelStroke();
     void undo();
+    void redo();
     void clear();
     [[nodiscard]] bool hasContent() const {
         return !annotations_.empty() || spotlightActive_;
     }
+    [[nodiscard]] bool canRedo() const { return !redo_.empty(); }
 
     /// Cursor-centred spotlight: dims everything outside a soft circle.
     void toggleSpotlight();
@@ -113,6 +115,7 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVisual> dcompVisual_;
 
     std::vector<lz::Annotation> annotations_;
+    std::vector<lz::Annotation> redo_;
     std::vector<ClickMark> clicks_;
     bool strokeInProgress_ = false;
 

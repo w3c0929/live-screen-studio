@@ -98,6 +98,7 @@ void ZoomController::startZoom() {
     input_.setZoomActive(true);
     input_.setDrawingArmed(settings_.drawWhileZoomed && overlay_->visible());
     input_.setHasStrokes(false);
+    input_.setHasRedo(false);
     input_.setCursorBounds(lz::Rect{static_cast<lz::Real>(monitorRect_.left),
                                     static_cast<lz::Real>(monitorRect_.top),
                                     display_.width, display_.height});
@@ -126,6 +127,7 @@ void ZoomController::finish() {
     strokeDrawing_ = false;
     input_.setDrawingArmed(false);
     input_.setHasStrokes(false);
+    input_.setHasRedo(false);
     input_.setZoomActive(false);
     input_.setCursorBounds(std::nullopt);
     camera_.reset();
@@ -291,6 +293,7 @@ void ZoomController::endStroke() {
     overlay_->endStroke();
     camera_->setFollowPaused(false);
     input_.setHasStrokes(overlay_->hasContent());
+    input_.setHasRedo(overlay_->canRedo());
     std::printf("[livezoom] stroke end, content=%d\n", overlay_->hasContent() ? 1 : 0);
 }
 
@@ -300,18 +303,32 @@ void ZoomController::cancelStroke() {
     overlay_->cancelStroke();
     camera_->setFollowPaused(false);
     input_.setHasStrokes(overlay_->hasContent());
+    input_.setHasRedo(overlay_->canRedo());
 }
 
 void ZoomController::undoStroke() {
     if (!overlay_) return;
     overlay_->undo();
     input_.setHasStrokes(overlay_->hasContent());
+    input_.setHasRedo(overlay_->canRedo());
+    std::printf("[livezoom] undo, content=%d redo=%d\n", overlay_->hasContent() ? 1 : 0,
+                overlay_->canRedo() ? 1 : 0);
+}
+
+void ZoomController::redoStroke() {
+    if (!overlay_) return;
+    overlay_->redo();
+    input_.setHasStrokes(overlay_->hasContent());
+    input_.setHasRedo(overlay_->canRedo());
+    std::printf("[livezoom] redo, content=%d redo=%d\n", overlay_->hasContent() ? 1 : 0,
+                overlay_->canRedo() ? 1 : 0);
 }
 
 void ZoomController::clearStrokes() {
     if (!overlay_) return;
     overlay_->clear();
     input_.setHasStrokes(false);
+    input_.setHasRedo(false);
 }
 
 void ZoomController::toggleSpotlight() {

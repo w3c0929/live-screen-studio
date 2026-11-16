@@ -356,6 +356,10 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
             if (!self->zoomActive_) {
                 self->spotlightHeld_ = false;
                 self->spotlightHeldVk_ = 0;
+                self->undoHeld_ = false;
+                self->undoHeldVk_ = 0;
+                self->redoHeld_ = false;
+                self->redoHeldVk_ = 0;
             }
             if (self->hotkeysSuppressed_) {
                 return CallNextHookEx(nullptr, code, message, lParam);
@@ -369,6 +373,16 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
                 if (self->spotlightHeld_ && self->spotlightHeldVk_ == keyboard->vkCode) {
                     self->spotlightHeld_ = false;
                     self->spotlightHeldVk_ = 0;
+                    return 1;
+                }
+                if (self->undoHeld_ && self->undoHeldVk_ == keyboard->vkCode) {
+                    self->undoHeld_ = false;
+                    self->undoHeldVk_ = 0;
+                    return 1;
+                }
+                if (self->redoHeld_ && self->redoHeldVk_ == keyboard->vkCode) {
+                    self->redoHeld_ = false;
+                    self->redoHeldVk_ = 0;
                     return 1;
                 }
             } else if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
@@ -408,6 +422,27 @@ LRESULT CALLBACK InputHook::keyboardProc(int code, WPARAM message, LPARAM lParam
                         PostMessageW(self->target_, kLiveZoomSpotlight, 0, 0);
                     }
                     return 1;
+                }
+                // Ctrl+Z / Ctrl+Y undo and redo ink. When there is nothing to restore, the
+                // shortcut is left for the app underneath; auto-repeat is always swallowed
+                // once the first press was handled.
+                if (mods == 1 && keyboard->vkCode == 'Z') {
+                    if (self->undoHeld_) return 1;
+                    if (self->hasStrokes_) {
+                        self->undoHeld_ = true;
+                        self->undoHeldVk_ = keyboard->vkCode;
+                        PostMessageW(self->target_, kLiveZoomUndo, 0, 0);
+                        return 1;
+                    }
+                }
+                if (mods == 1 && keyboard->vkCode == 'Y') {
+                    if (self->redoHeld_) return 1;
+                    if (self->hasRedo_) {
+                        self->redoHeld_ = true;
+                        self->redoHeldVk_ = keyboard->vkCode;
+                        PostMessageW(self->target_, kLiveZoomRedo, 0, 0);
+                        return 1;
+                    }
                 }
             }
         }

@@ -31,6 +31,7 @@ public:
     void endStroke();
     void cancelStroke();
     void undoStroke();
+    void redoStroke();
     void clearStrokes();
     void toggleSpotlight();
     void reloadSettings();

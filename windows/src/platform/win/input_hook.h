@@ -23,6 +23,7 @@ inline constexpr UINT kLiveZoomStrokeCancel = WM_APP + 11;
 inline constexpr UINT kLiveZoomSpotlight = WM_APP + 13;
 /// Posted to the owner window so the click is injected from the UI thread, never the hook thread.
 inline constexpr UINT kLiveZoomReplayClick = WM_APP + 14;
+inline constexpr UINT kLiveZoomRedo = WM_APP + 15;
 inline constexpr UINT kLiveZoomTray = WM_APP + 100;
 
 struct HotkeyBinding {
@@ -59,6 +60,8 @@ public:
     void setDrawingArmed(bool armed);
     /// Whether there are strokes or highlights to undo/clear.
     void setHasStrokes(bool has) { hasStrokes_ = has; }
+    /// Whether an undone stroke is available to restore.
+    void setHasRedo(bool has) { hasRedo_ = has; }
     /// Test/demo hook: accept SendInput/mouse_event events too.
     void setAcceptInjected(bool accept) { acceptInjected_ = accept; }
     void setToggleHotkey(HotkeyBinding hotkey);
@@ -102,6 +105,7 @@ private:
     std::atomic<bool> zoomActive_{false};
     std::atomic<bool> drawingArmed_{false};
     std::atomic<bool> hasStrokes_{false};
+    std::atomic<bool> hasRedo_{false};
     std::atomic<bool> acceptInjected_{false};
     std::atomic<bool> hotkeysSuppressed_{false};
     bool middleDown_ = false;
@@ -122,6 +126,10 @@ private:
     bool spotlightHeld_ = false;
     UINT spotlightHeldVk_ = 0;
     HotkeyBinding spotlightHotkey_{0x34, 5};
+    bool undoHeld_ = false;
+    UINT undoHeldVk_ = 0;
+    bool redoHeld_ = false;
+    UINT redoHeldVk_ = 0;
     std::mutex hotkeyMutex_;
     HHOOK mouseHook_ = nullptr;
     HHOOK keyboardHook_ = nullptr;

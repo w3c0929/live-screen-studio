@@ -371,7 +371,7 @@ void createControls(HWND dialog) {
     addStatic(dialog,
               L"放大/缩回：中键（可关闭），或默认 Ctrl+Shift+Z（快捷键可自定义）\n"
               L"按住中键滚动：调倍    放大后左键拖动：画线    Shift：直线    Ctrl+左键拖动：正常拖拽\n"
-              L"右键：撤销    Esc：清除笔迹\n"
+              L"右键或 Ctrl+Z：撤销    Ctrl+Y：恢复    Esc：清除笔迹\n"
               L"聚光灯：默认 Ctrl+Shift+4 在光标周围聚光（可自定义快捷键）\n"
               L"跟随边缘：百分比越小，越靠近屏幕边缘才移动\n"
               L"放大画质：平滑更柔和；整数倍像素锐利会呈块状（Windows 放大只有这两种采样）",

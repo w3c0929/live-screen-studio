@@ -135,6 +135,9 @@ LRESULT CALLBACK mainProc(HWND window, UINT message, WPARAM wParam, LPARAM lPara
         case kLiveZoomUndo:
             g_controller->undoStroke();
             return 0;
+        case kLiveZoomRedo:
+            g_controller->redoStroke();
+            return 0;
         case kLiveZoomClear:
             g_controller->clearStrokes();
             return 0;
