@@ -7,6 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <vector>
 
 #include "geometry.h"
 
@@ -68,7 +69,7 @@ public:
     [[nodiscard]] bool running() const { return installed_; }
 
 private:
-    enum : UINT { kApplyCursorBounds = WM_APP + 20 };
+    enum : UINT { kApplyCursorBounds = WM_APP + 20, kReplayClick = WM_APP + 21 };
 
     static LRESULT CALLBACK mouseProc(int code, WPARAM message, LPARAM lParam);
     static LRESULT CALLBACK keyboardProc(int code, WPARAM message, LPARAM lParam);
@@ -77,6 +78,10 @@ private:
     void applyCursorBounds();
     void postStroke(UINT message, POINT point, bool straight);
     void postPoint(UINT message, POINT point);
+    /// Queues a click for the hook thread. Never call SendInput inside a hook callback:
+    /// repeated injected input there can stall the hook past the system timeout.
+    void queueReplay(POINT point);
+    void replayPending();
     void replayClick(POINT point);
 
     static InputHook* current_;
@@ -122,4 +127,7 @@ private:
 
     std::mutex boundsMutex_;
     std::optional<lz::Rect> pendingBounds_;
+
+    std::mutex replayMutex_;
+    std::vector<POINT> replayQueue_;
 };

@@ -113,6 +113,8 @@ void InputHook::threadMain() {
         while (GetMessageW(&message, nullptr, 0, 0) > 0) {
             if (message.message == kApplyCursorBounds) {
                 applyCursorBounds();
+            } else if (message.message == kReplayClick) {
+                replayPending();
             }
         }
     }
@@ -169,6 +171,29 @@ void InputHook::postPoint(UINT message, POINT point) {
     if (!data) return;
     if (!PostMessageW(target_, message, 0, reinterpret_cast<LPARAM>(data))) {
         delete data;
+    }
+}
+
+void InputHook::queueReplay(POINT point) {
+    {
+        std::lock_guard lock(replayMutex_);
+        if (replayQueue_.size() >= 32) replayQueue_.erase(replayQueue_.begin());
+        replayQueue_.push_back(point);
+    }
+    const DWORD id = threadId_.load();
+    if (id != 0) {
+        PostThreadMessageW(id, kReplayClick, 0, 0);
+    }
+}
+
+void InputHook::replayPending() {
+    std::vector<POINT> points;
+    {
+        std::lock_guard lock(replayMutex_);
+        points.swap(replayQueue_);
+    }
+    for (const POINT& point : points) {
+        replayClick(point);
     }
 }
 
@@ -296,7 +321,7 @@ LRESULT CALLBACK InputHook::mouseProc(int code, WPARAM message, LPARAM lParam) {
                         // Plain click: forward it now, without touching the stroke layer.
                         std::printf("[hook] click (%ld,%ld)\n", self->downPoint_.x,
                                     self->downPoint_.y);
-                        self->replayClick(self->downPoint_);
+                        self->queueReplay(self->downPoint_);
                         self->postPoint(kLiveZoomClick, self->downPoint_);
                         return 1;
                     }
