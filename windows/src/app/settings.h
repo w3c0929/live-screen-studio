@@ -51,7 +51,7 @@ struct Settings {
     double followMarginCalm = 0.06;
     double followMarginStandard = 0.04;
     double followMarginSnappy = 0.02;
-    bool smoothImage = false;
+    bool smoothImage = true;
     bool excludeObs = true;
     bool drawWhileZoomed = true;
     bool middleClickZoom = true;

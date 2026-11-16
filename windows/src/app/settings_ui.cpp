@@ -12,7 +12,7 @@ constexpr wchar_t kSettingsClass[] = L"LiveZoomSettingsWindow";
 constexpr int kIdZoom = 1001;
 constexpr int kIdFollow = 1002;
 constexpr int kIdDraw = 1003;
-constexpr int kIdSmooth = 1004;
+constexpr int kIdQuality = 1004;
 constexpr int kIdObs = 1005;
 constexpr int kIdInkStyle = 1006;
 constexpr int kIdInkColor = 1007;
@@ -29,7 +29,6 @@ constexpr int kIdMarginSnappy = 1017;
 constexpr int kIdHotkeyOpen = 1018;
 constexpr int kIdAutoStart = 1020;
 constexpr int kIdMiddleClick = 1021;
-constexpr int kIdSharpText = 1022;
 constexpr int kIdOk = 2001;
 constexpr int kIdCancel = 2002;
 constexpr int kIdRecordToggle = 3001;
@@ -50,7 +49,7 @@ HWND g_dialog = nullptr;
 HWND g_zoomCombo = nullptr;
 HWND g_followCombo = nullptr;
 HWND g_drawCheck = nullptr;
-HWND g_smoothCheck = nullptr;
+HWND g_qualityCombo = nullptr;
 HWND g_obsCheck = nullptr;
 HWND g_inkStyleCombo = nullptr;
 HWND g_inkColorCombo = nullptr;
@@ -62,7 +61,6 @@ HWND g_cursorStyleCombo = nullptr;
 HWND g_smoothCursorCheck = nullptr;
 HWND g_hideIdleCheck = nullptr;
 HWND g_middleClickCheck = nullptr;
-HWND g_sharpTextCheck = nullptr;
 HWND g_autoStartCheck = nullptr;
 HWND g_marginCalmCombo = nullptr;
 HWND g_marginStandardCombo = nullptr;
@@ -245,9 +243,18 @@ void createControls(HWND dialog) {
     SendMessageW(g_drawCheck, BM_SETCHECK, g_settings->drawWhileZoomed ? BST_CHECKED : BST_UNCHECKED,
                  0);
 
-    g_smoothCheck = addCheck(dialog, kIdSmooth, L"放大画面平滑（非整数倍时）", 24, 140, 320, 24);
-    SendMessageW(g_smoothCheck, BM_SETCHECK, g_settings->smoothImage ? BST_CHECKED : BST_UNCHECKED,
-                 0);
+    addStatic(dialog, L"放大画质", 24, 144, 105, 22);
+    g_qualityCombo = addCombo(dialog, kIdQuality, 140, 140, 200, 220);
+    SendMessageW(g_qualityCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"平滑（推荐）"));
+    SendMessageW(g_qualityCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"整数倍像素锐利"));
+    SendMessageW(g_qualityCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"始终不平滑（有锯齿）"));
+    int qualityIndex = 0;
+    if (!g_settings->smoothImage) {
+        qualityIndex = 2;
+    } else if (g_settings->sharpText) {
+        qualityIndex = 1;
+    }
+    SendMessageW(g_qualityCombo, CB_SETCURSEL, qualityIndex, 0);
 
     g_obsCheck = addCheck(dialog, kIdObs, L"排除 OBS 窗口", 24, 172, 300, 24);
     SendMessageW(g_obsCheck, BM_SETCHECK, g_settings->excludeObs ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -262,10 +269,6 @@ void createControls(HWND dialog) {
                                   L"使用鼠标中键放大/缩回（含滚轮调倍）", 24, 268, 400, 24);
     SendMessageW(g_middleClickCheck, BM_SETCHECK,
                  g_settings->middleClickZoom ? BST_CHECKED : BST_UNCHECKED, 0);
-    g_sharpTextCheck = addCheck(dialog, kIdSharpText, L"整数倍时按像素锐利显示（可能呈块状）", 24,
-                                300, 400, 24);
-    SendMessageW(g_sharpTextCheck, BM_SETCHECK,
-                 g_settings->sharpText ? BST_CHECKED : BST_UNCHECKED, 0);
     g_autoStartCheck = addCheck(dialog, kIdAutoStart, L"开机启动 LiveZoom", 800, 208, 200, 24);
     SendMessageW(g_autoStartCheck, BM_SETCHECK,
                  autoStartEnabled() ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -363,7 +366,7 @@ void createControls(HWND dialog) {
     addButton(dialog, kIdHotkeyOpen, L"快捷键…", 800, 168, 180, 30);
 
     // Explanatory text lives in a dedicated bottom block, never between controls.
-    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 24, 334,
+    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, 24, 320,
                     1000, 2, dialog, nullptr, GetModuleHandleW(nullptr), nullptr);
     addStatic(dialog,
               L"放大/缩回：中键（可关闭），或默认 Ctrl+Shift+Z（快捷键可自定义）\n"
@@ -371,8 +374,8 @@ void createControls(HWND dialog) {
               L"右键：撤销    Esc：清除笔迹\n"
               L"聚光灯：默认 Ctrl+Shift+4 在光标周围聚光（可自定义快捷键）\n"
               L"跟随边缘：百分比越小，越靠近屏幕边缘才移动\n"
-              L"整数倍放大：默认平滑；勾选“按像素锐利显示”会变为块状（Windows 放大只有这两种采样）",
-              24, 350, 1000, 118);
+              L"放大画质：平滑更柔和；整数倍像素锐利会呈块状（Windows 放大只有这两种采样）",
+              24, 336, 1000, 118);
 
     addButton(dialog, kIdOk, L"确定", 860, 480, 86, 30);
     addButton(dialog, kIdCancel, L"取消", 956, 480, 86, 30);
@@ -389,8 +392,11 @@ void readControls() {
                                             : lz::FollowStyle::Calm;
     g_settings->drawWhileZoomed =
         SendMessageW(g_drawCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    g_settings->smoothImage =
-        SendMessageW(g_smoothCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    // One quality control: smoothing everywhere, smoothing except whole-number zoom, or none.
+    const int qualityIndex =
+        static_cast<int>(SendMessageW(g_qualityCombo, CB_GETCURSEL, 0, 0));
+    g_settings->smoothImage = qualityIndex != 2;
+    g_settings->sharpText = qualityIndex == 1;
     g_settings->excludeObs =
         SendMessageW(g_obsCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->smoothCursor =
@@ -399,8 +405,6 @@ void readControls() {
         SendMessageW(g_hideIdleCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     g_settings->middleClickZoom =
         SendMessageW(g_middleClickCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    g_settings->sharpText =
-        SendMessageW(g_sharpTextCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     const bool autoStart = SendMessageW(g_autoStartCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
     if (!setAutoStart(autoStart)) {
